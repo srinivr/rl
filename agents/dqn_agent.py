@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+
+from agents.base_agent import BaseAgent
 from utils.replay_buffer import ReplayBuffer
 from utils.scheduler.constant_scheduler import StepDecayScheduler
 from collections import namedtuple
@@ -8,30 +10,15 @@ import numpy as np
 import time
 
 
-class DQNAgent:
+class DQNAgent(BaseAgent):
 
-    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, mb_size=32, lr=1e-3, momentum=0.9,
+    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, lr=1e-3, momentum=0.9,
                  criterion=nn.SmoothL1Loss, optimizer=optim.RMSprop, gamma=0.99, epsilon_scheduler=StepDecayScheduler(),
                  epsilon_scheduler_use_steps=True, target_update_frequency=1e4, parameter_update_frequency=1,
-                 replay_buffer_size=100000, replay_build_wait_steps=None, grad_clamp=None):
+                 grad_clamp=None, mb_size=32, replay_buffer_size=100000, replay_build_wait_steps=None):
 
-        self.model_class = model_class
-        self.rng = rng
-        self.device = device
-        self.n_episodes = n_episodes
         self.mb_size = mb_size
-        self.lr = lr
-        self.momentum = momentum
-        self.criterion = criterion()
-        self.gamma = gamma
-        self.epsilon_scheduler = epsilon_scheduler
-        self.epsilon_scheduler_use_steps = epsilon_scheduler_use_steps
-        self.model_learner = self.model_class(*model_params)
-        self.model_target = self.model_class(*model_params)
-        self.target_update_frequency = target_update_frequency
-        self.parameter_update_frequency = parameter_update_frequency
         self.replay_buffer_size = replay_buffer_size
-        self.grad_clamp = grad_clamp
         if self.replay_buffer_size > 0:
             if replay_build_wait_steps:
                 assert replay_build_wait_steps <= self.replay_buffer_size
@@ -39,12 +26,9 @@ class DQNAgent:
             else:
                 self.replay_build_wait_steps = self.mb_size
             self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
-        self.model_learner.to(self.device)
-        self.model_target.to(self.device)
-        self.optimizer = optimizer(self.model_learner.parameters(), lr=self.lr, momentum=self.momentum)
-        self.model_target.load_state_dict(self.model_learner.state_dict())
-        self.elapsed_steps = 0
-        self.elapsed_episodes = 0
+        super().__init__(model_class, model_params, rng, device, n_episodes, lr, momentum, criterion, optimizer, gamma,
+                         epsilon_scheduler, epsilon_scheduler_use_steps, target_update_frequency,
+                         parameter_update_frequency, grad_clamp)
 
     def _wait(self):
         return self.elapsed_steps <= self.replay_build_wait_steps

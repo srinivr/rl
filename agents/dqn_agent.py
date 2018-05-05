@@ -52,14 +52,14 @@ class DQNAgent(BaseAgent):
                 print('mean prev 100 returns:', ep, ':', np.mean(returns[-100:]))
 
     def _get_batch(self):
+        float_args = dict(device=self.device, dtype=torch.float)
         samples = self.replay_buffer.sample(self.mb_size)
         batch = self.transitions(*zip(*samples))
         non_final_mask = torch.tensor(tuple(map(lambda s: not s, batch.done)), device=self.device)
-        states = torch.tensor(batch.state, device=self.device, dtype=torch.float)
+        states = torch.tensor(batch.state, **float_args)
         actions = torch.tensor(batch.action, device=self.device, dtype=torch.long)
-        rewards = torch.tensor(batch.reward, device=self.device, dtype=torch.float)
-        non_final_states = torch.tensor([s for s, d in zip(batch.next_state, batch.done) if not d],
-                                        device=self.device, dtype=torch.float)
+        rewards = torch.tensor(batch.reward, **float_args)
+        non_final_states = torch.tensor([s for s, d in zip(batch.next_state, batch.done) if not d], **float_args)
         targets = torch.zeros(self.mb_size, device=self.device)
         self.model_target.eval()
         targets[non_final_mask] += self.gamma * self.model_target(non_final_states).max(1)[0].detach()
@@ -69,7 +69,7 @@ class DQNAgent(BaseAgent):
     def _is_gather_experience(self):
         return len(self.replay_buffer) < self.replay_buffer_min_experience
 
-    def get_epsilon(self):
+    def _get_epsilon(self):
         if self._is_gather_experience():
             return 1. # np.random.random() < 1 always; hence do random action until minimum experience
         epsilon = self.epsilon_scheduler.get_epsilon(self.elapsed_steps) if self.epsilon_scheduler_use_steps \

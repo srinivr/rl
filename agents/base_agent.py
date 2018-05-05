@@ -37,15 +37,15 @@ class BaseAgent:
     def learn(self, env):
         raise NotImplementedError
 
-    def get_epsilon(self, arg=None):
+    def _get_epsilon(self, arg=None):
         raise NotImplementedError
 
     def _outputs(self, states, actions):
         self.model_learner.train()
         return self.model_learner(states).gather(1, actions.view(actions.size()[0], -1))
 
-    def _action(self, env, o):
-        epsilon = self.get_epsilon()
+    def _action(self, env, o, env_idx=None):
+        epsilon = self._get_epsilon(env_idx)
         if np.random.random() < epsilon:
             action = env.action_space.sample()
         else:

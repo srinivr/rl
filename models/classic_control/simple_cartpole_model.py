@@ -10,9 +10,10 @@ class SimpleCartPoleModel(nn.Module):
         self.embedding = 24
         self.fc_layers = nn.Sequential(
             nn.Linear(self.input_dim, self.embedding),
-
+            nn.BatchNorm1d(self.embedding),
             nn.ReLU(),
             nn.Linear(self.embedding, self.embedding),
+            nn.BatchNorm1d(self.embedding),
             nn.ReLU(),
             nn.Linear(self.embedding, self.output_dim)
         )

@@ -5,6 +5,7 @@ from agents.dqn_agent import DQNAgent
 from utils.scheduler.decay_scheduler import StepDecayScheduler
 from utils.vec_env.subproc_vec_env import SubprocVecEnv
 
+
 env = gym.make('CartPole-v0')
 if False:
     agent = DQNAgent(SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=100000, epsilon_scheduler_use_steps=True,

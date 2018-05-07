@@ -20,3 +20,7 @@ class ReplayBuffer:
 
     def __len__(self):
         return self.len
+
+    def __str__(self):
+        return str(self.buffer)
+

@@ -31,19 +31,23 @@ class DQNAgent(BaseAgent):
                          optimizer, gamma, epsilon_scheduler, epsilon_scheduler_use_steps, target_update_steps,
                          parameter_update_frequency, grad_clamp)
 
-    def learn(self, env):
+    def learn(self, env, eval_env=None):
+        if not eval_env:
+            eval_env = env
         returns = []
+        # self.epsilon_scheduler.set_no_decay()  # do not decay until replay buffer is adequately filled
         for ep in range(self.n_episodes):
             o = env.reset()
             done = False
             ret = 0
             while not done:
-                action, o_, reward, done, info = self._get_action(env, o)
+                action, o_, reward, done, info = self._get_epsilon_greedy_action(env, o)
                 ret += reward
                 self.replay_buffer.insert(self.transitions(o, action, reward, o_, done))
                 if self._is_gather_experience():
                     continue
-                states, actions, targets = self._get_batch()
+                # self.epsilon_scheduler.set_do_decay()  # decay since replay buffer is adequately filled
+                states, actions, targets = self.__get_batch()  # note: __ not _
                 self._step_updates(states, actions, targets)
                 o = o_
             self._episode_updates()
@@ -51,51 +55,25 @@ class DQNAgent(BaseAgent):
             if (ep+1) % 100 == 0 and len(returns) >= 100:
                 print('mean prev 100 returns:', ep, ':', np.mean(returns[-100:]))
                 print('ep:', ep, end=' ')
-                self._eval(env)
+                self._eval(eval_env)
                 returns = []
 
-    def _get_batch(self):
+    def __get_batch(self):
         samples = self.replay_buffer.sample(self.mb_size)
         batch = self.transitions(*zip(*samples))  # https://stackoverflow.com/a/19343/3343043
         return super()._get_batch(batch.state, batch.action, batch.next_state, batch.reward, batch.done)
-
-    def _get_action(self, env, o):
-        epsilon = self._get_epsilon()
-        if np.random.random() < epsilon:
-            action = env.action_space.sample()
-        else:
-            self.model_learner.eval()
-            model_out = self.model_learner(torch.tensor(o, device=self.device, dtype=torch.float).unsqueeze(0))
-            action = model_out.max(1)[1].detach().to('cpu').numpy()[0]
-        o_, reward, done, info = env.step(action)
-        self.elapsed_env_steps += 1
-        return action, o_, reward, done, info
 
     def _is_gather_experience(self):
         return len(self.replay_buffer) < self.replay_buffer_min_experience
 
     def _get_epsilon(self):
         if self._is_gather_experience():
-            return 1. # np.random.random() < 1 always; hence do random action until minimum experience
-        epsilon = self.epsilon_scheduler.get_epsilon(self.elapsed_model_steps) if self.epsilon_scheduler_use_steps \
-            else self.epsilon_scheduler.get_epsilon(self.elapsed_episodes)
-        return epsilon
+            return 1.  # np.random.random() < 1 always; hence do random action until minimum experience
+        return super()._get_epsilon()
 
-    def _eval(self, env, epsilon=0.):
-        returns = []
-        for ep in range(self.n_eval_steps):
-            o = env.reset()
-            done = False
-            ret = 0
-            while not done:
-                self.model_target.eval()
-                if np.random.random() < epsilon:
-                    action = env.action_space.sample()
-                else:
-                    action = self.model_target(torch.tensor(o, device=self.device, dtype=torch.float).unsqueeze(0)).\
-                        max(1)[1].to('cpu').numpy()[0]
-                o, rew, done, info = env.step(action)
-                ret += rew
-            returns.append(ret)
-        print('mean eval return:', np.mean(returns))
-        print()
+    def _get_sample_action(self, env):
+        return env.action_space.sample()
+
+    def _get_action_from_model(self, model, o, action_type='scalar'):
+        return super()._get_action_from_model(model, o, action_type)
+

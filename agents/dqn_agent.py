@@ -83,7 +83,7 @@ class DQNAgent(BaseAgent):
 
     def _eval(self, env, epsilon=0.):
         returns = []
-        for ep in range(100): #TODO change hardcoded value
+        for ep in range(self.n_eval_steps):
             o = env.reset()
             done = False
             ret = 0

@@ -32,7 +32,7 @@ class BaseAgent:
         self.model_target.to(self.device)
         self.optimizer = optimizer(self.model_learner.parameters(), lr=self.lr, momentum=self.momentum)
         self.model_target.load_state_dict(self.model_learner.state_dict())
-        self.elapsed_model_steps = 0  # number of updates to the model
+        self.elapsed_model_steps = 0  # number of updates to the model! # TODO this may not be right! every n-steps in n-step
         self.elapsed_env_steps = 0  # number of interactions with the/an environment
         self.elapsed_episodes = 0
 

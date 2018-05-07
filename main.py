@@ -5,8 +5,8 @@ from agents.dqn_agent import DQNAgent
 from utils.scheduler.decay_scheduler import StepDecayScheduler
 from utils.vec_env.subproc_vec_env import SubprocVecEnv
 
-if True:
-    env = gym.make('CartPole-v0')
+env = gym.make('CartPole-v0')
+if False:
     agent = DQNAgent(SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=100000, epsilon_scheduler_use_steps=True,
                      target_update_steps=10000, grad_clamp=[-1, 1])
     agent.learn(env)
@@ -27,6 +27,6 @@ else:
     envs = [make_env(env_name, 2 * seed) for seed in range(nproc)]
 
     envs = SubprocVecEnv(envs)
-    agent = NStepSynchronousDQNAgent(SimpleCartPoleModel, [4, 2], None,  n_envs=nproc,
-                     target_update_frequency=1, grad_clamp=[-1, 1])
-    agent.learn(envs)
+    agent = NStepSynchronousDQNAgent(SimpleCartPoleModel, [4, 2], None, n_envs=nproc,
+                                     target_update_steps=10000, grad_clamp=[-1, 1], n_eval_steps=10000)
+    agent.learn(envs, env)

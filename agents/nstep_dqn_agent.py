@@ -1,13 +1,12 @@
 import itertools
+import math
 from collections import namedtuple
 
-from agents.base_agent import BaseAgent
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import multiprocessing as mp
 from agents.base_agent import BaseAgent
-from utils.scheduler.constant_scheduler import StepDecayScheduler
+from utils.scheduler.decay_scheduler import StepDecayScheduler
 import numpy as np
 
 
@@ -16,102 +15,64 @@ class NStepSynchronousDQNAgent(BaseAgent):
     https://arxiv.org/pdf/1710.11417.pdf (batched n-step)
     """
 
-    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, lr=1e-3, momentum=0.9,
-                 criterion=nn.SmoothL1Loss, optimizer=optim.RMSprop, gamma=0.99, epsilon_scheduler=StepDecayScheduler(),
-                 epsilon_scheduler_use_steps=True, target_update_frequency=1e4, parameter_update_frequency=1,
+    def __init__(self, model_class, model_params, rng, device='cpu', n_eval_steps=100, lr=1e-3,
+                 momentum=0.9, criterion=nn.SmoothL1Loss, optimizer=optim.RMSprop, gamma=0.99,
+                 epsilon_scheduler=StepDecayScheduler(), target_update_steps=1e4, parameter_update_frequency=1,
                  grad_clamp=None, n_step=5, n_envs=1):
 
         self.n_step = n_step
         self.n_envs = n_envs
-        self.elapsed_env_step = np.zeros(self.n_envs)
+        target_update_steps = target_update_steps // self.n_step + 1  # model is updated every n_step hence divide by n_step
         self.batch_values = namedtuple('Values', 'done step_ctr rewards states actions targets')
-        super().__init__(model_class, model_params, rng, device, n_episodes, lr, momentum, criterion, optimizer, gamma,
-                         epsilon_scheduler, epsilon_scheduler_use_steps, target_update_frequency,
-                         parameter_update_frequency, grad_clamp)
+        super().__init__(model_class, model_params, rng, device, None, n_eval_steps, lr, momentum, criterion,
+                         optimizer, gamma, epsilon_scheduler, True, target_update_steps, parameter_update_frequency,
+                         grad_clamp)
 
-    def learn(self, envs):
-        float_args = dict(device=self.device, dtype=torch.float)
-        for ep in range(self.n_episodes):
-            batch_observations = [envs[i].reset() for i in range(self.n_envs)]
-            batch_done = [False] * self.n_envs
-            batch_returns = 0.  # np.empty(shape=(self.n_envs, self.n_episodes))
-            print('batch observations:', batch_observations)
-            while not all(batch_done):
-                """
-                    multiprocessing discussion:
-                     https://discuss.pytorch.org/t/using-torch-tensor-over-multiprocessing-queue-process-fails/2847
-                """
-                done_event = mp.Event()
-                queue = mp.Queue()
-                processes = []
-                for i in range(self.n_envs):
-                    p = mp.Process(target=self._step, args=(done_event, queue, i, i, envs[i], batch_observations[i],
-                                                            batch_done[i],))
-                    p.start()
-                    processes.append(p)
-                finished = 0
-                results = []
-                while finished != self.n_envs:
-                    result = queue.get()
-                    if result is None:
-                        finished += 1
-                    else:
-                        results.append(result)
-                results = self.batch_values(*zip(*results))  # TODO the state of env will not be changed.  
-                batch_returns += np.sum(results.rewards)
-                batch_done = list(results.done)
-                print('batch_done', batch_done, 'all done?', all(batch_done), 'steps', results.step_ctr)
-                print('cumulative steps', self.elapsed_env_step)
-                step_counters = results.step_ctr
-                _states = list(itertools.chain.from_iterable(results.states))  # list of numpy arrays
-                _actions = list(itertools.chain.from_iterable(results.actions))  # list of numpy arrays
-                targets = torch.cat(list(results.targets))  # list of variables on the device
-                self.elapsed_steps += np.sum(step_counters)  # TODO _step_updates increment the counter by 1
-                states = torch.tensor(_states, **float_args)
-                actions = torch.tensor(_actions, device=self.device, dtype=torch.long)
-                self._step_updates(states, actions, targets)
-                batch_observations = _states
-            # print returns
-            print('average return:', np.mean(batch_returns))
-            self._episode_updates()
-
-    def _step(self, done_event, q, env_idx, seed, env, o, done):
+    def learn(self, envs, eval_env):
         """
-        1 n-step step (not the usual n-step)
-        :param env_idx:
-        :param seed:
-        :param env:
-        :param done:
-        :return:
+        env and eval_env should be different! (since we are using SubProcvecEnv and _eval calls env.reset())
         """
-        print('step called')
-        np.random.seed(seed)
-        step_ctr = 0
-        rewards = []
-        states = []
-        actions = []
-        while not done and step_ctr < self.n_step:
-            action, o_, reward, done, info = self._action(env, o, env_idx)
-            step_ctr += 1
-            self.elapsed_env_step[env_idx] += 1  # won't have any effect TODO remove
-            states.append(o)
-            rewards.append(reward)
-            actions.append(action)
-            o = o_
-        targets = torch.empty(step_ctr, 1)
-        if done:
-            target = reward
-        else:
-            self.model_target.eval()
-            target = reward + self.gamma * self.model_target(torch.tensor(o_, device=self.device, dtype= \
-                torch.float).unsqueeze(0)).max(1)[0].detach()
-        targets[step_ctr - 1] = target
-        for n in range(step_ctr - 2, -1, -1):
-            targets[n] = rewards[n] + self.gamma * targets[n + 1]
-        q.put((done, step_ctr, np.sum(rewards), states, actions, targets))
-        q.put(None)
-        done_event.wait()
+        assert eval_env is not None
+        max_steps = 10000000  # TODO change hardcoded value
+        batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, = [], [], [], [], []
+        step_states = envs.reset()
+        while self.elapsed_env_steps < max_steps:
+            step_actions, step_next_states, step_rewards, step_done, step_info = self._get_epsilon_greedy_action(envs,
+                                                                                                                 step_states)
+            for b, s in zip([batch_states, batch_actions, batch_next_states, batch_rewards, batch_done],
+                            [step_states, step_actions, step_next_states, step_rewards, step_done]):
+                b.append(s)
+            # batch_states.append(step_states)
+            # batch_actions.append(step_actions)
+            # batch_next_states.append(step_next_states)
+            # batch_rewards.append(step_rewards)
+            # batch_done.append(step_done)
+            if self.elapsed_env_steps % self.n_step == 0:
+                states, actions, targets = self._get_batch(batch_states, batch_actions, batch_next_states,
+                                                           batch_rewards,
+                                                           batch_done)  # batched n-step targets
+                self._step_updates(states, actions, targets)  # TODO model steps updated here!!! So much challenges
+                batch_states, batch_actions, batch_next_states, batch_rewards, batch_done = [], [], [], [], []
+            step_states = step_next_states
+            if self.elapsed_env_steps % self.n_eval_episodes == 0:  # TODO naming: eval_steps or eval_episodes?
+                print('step:', self.elapsed_env_steps, end=' ')
+                self._eval(eval_env)
 
-    def _get_epsilon(self, arg):
-        epsilon = self.epsilon_scheduler.get_epsilon(self.elapsed_env_step[arg])
-        return epsilon
+    def _get_batch(self, batch_states, batch_actions, batch_next_states, batch_rewards, batch_done):
+        """
+        construct n_step targets using super()._get_batch()
+        """
+        states, actions, targets = [], [], []
+        _targets = None
+        for i in range(1, self.n_step + 1):
+            _states, _actions, _targets = super()._get_batch(batch_states[-i], batch_actions[-i], batch_next_states[-i],
+                                                             batch_rewards[-i], batch_done[-i], future_target=_targets)
+            states.insert(0, _states), actions.insert(0, _actions), targets.insert(0, _targets)
+        return torch.cat(states), torch.cat(actions), torch.cat(targets)
+
+    def _get_sample_action(self, envs):
+        return [envs.action_space.sample() for _ in range(self.n_envs)]
+
+    def _get_action_from_model(self, model, o, action_type='list'):
+        return super()._get_action_from_model(model, o, action_type)
+

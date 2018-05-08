@@ -15,16 +15,16 @@ class NStepSynchronousDQNAgent(BaseAgent):
     https://arxiv.org/pdf/1710.11417.pdf (batched n-step)
     """
 
-    def __init__(self, model_class, model_params, rng, device='cpu', n_eval_steps=100, lr=1e-3,
+    def __init__(self, model_class, model_params, rng, device='cpu', evaluation_frequency=100, lr=1e-3,
                  momentum=0.9, criterion=nn.SmoothL1Loss, optimizer=optim.RMSprop, gamma=0.99,
-                 epsilon_scheduler=StepDecayScheduler(), target_update_steps=1e4, parameter_update_frequency=1,
+                 epsilon_scheduler=StepDecayScheduler(decay=0.999995), target_update_steps=1e4, parameter_update_frequency=1,
                  grad_clamp=None, n_step=5, n_envs=1):
 
         self.n_step = n_step
         self.n_envs = n_envs
-        target_update_steps = target_update_steps // self.n_step + 1  # model is updated every n_step hence divide by n_step
+        target_update_steps = 1 if not target_update_steps // self.n_step else target_update_steps // self.n_step  # model is updated every n_step hence divide by n_step
         self.batch_values = namedtuple('Values', 'done step_ctr rewards states actions targets')
-        super().__init__(model_class, model_params, rng, device, None, n_eval_steps, lr, momentum, criterion,
+        super().__init__(model_class, model_params, rng, device, None, evaluation_frequency, lr, momentum, criterion,
                          optimizer, gamma, epsilon_scheduler, True, target_update_steps, parameter_update_frequency,
                          grad_clamp)
 
@@ -54,7 +54,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
                 self._step_updates(states, actions, targets)  # TODO model steps updated here!!! So much challenges
                 batch_states, batch_actions, batch_next_states, batch_rewards, batch_done = [], [], [], [], []
             step_states = step_next_states
-            if self.elapsed_env_steps % self.n_eval_episodes == 0:  # TODO naming: eval_steps or eval_episodes?
+            if self.elapsed_env_steps % self.evaluation_frequency == 0:  # TODO naming: eval_steps or eval_episodes?
                 print('step:', self.elapsed_env_steps, end=' ')
                 self._eval(eval_env)
 

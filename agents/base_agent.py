@@ -7,7 +7,7 @@ import torch
 
 class BaseAgent:
 
-    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, n_eval_steps=100, lr=1e-3,
+    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, evaluation_frequency=100, lr=1e-3,
                  momentum=0.9, criterion=nn.SmoothL1Loss, optimizer=optim.RMSprop, gamma=0.99,
                  epsilon_scheduler=StepDecayScheduler(), epsilon_scheduler_use_steps=True, target_update_steps=1e4,
                  parameter_update_frequency=1, grad_clamp=None):
@@ -16,7 +16,7 @@ class BaseAgent:
         self.rng = rng
         self.device = device
         self.n_episodes = n_episodes
-        self.n_eval_episodes = n_eval_steps
+        self.evaluation_frequency = evaluation_frequency  # steps or episodes depending on the context! TODO improve?
         self.lr = lr
         self.momentum = momentum
         self.criterion = criterion()
@@ -68,13 +68,13 @@ class BaseAgent:
         self.elapsed_env_steps += 1
         return action, o_, reward, done, info
 
-    def _eval(self, env, action_type='scalar'):
+    def _eval(self, env, n_episodes=100, action_type='scalar'):
         """
         :param action_type: 'scalar' or 'list' whichever is appropriate for the environment
         """
         returns = []
         self.model_target.eval()
-        for ep in range(self.n_eval_episodes):
+        for ep in range(n_episodes):
             o = env.reset()
             done = False
             ret = 0
@@ -110,7 +110,7 @@ class BaseAgent:
         self.elapsed_model_steps += 1
         if self.elapsed_model_steps % self.target_update_steps == 0:
             self.model_target.load_state_dict(self.model_learner.state_dict())
-            print('agents synchronized...')
+            print('agents synchronized...at model step:', self.elapsed_model_steps, '.. env step:', self.elapsed_env_steps)
         if self.epsilon_scheduler_use_steps:
             self.epsilon_scheduler.step()
 

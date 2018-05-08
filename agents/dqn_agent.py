@@ -11,7 +11,7 @@ import numpy as np
 
 class DQNAgent(BaseAgent):
 
-    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, n_eval_steps=100, lr=1e-3,
+    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, evaluation_frequency=100, lr=1e-3,
                  momentum=0.9, criterion=nn.SmoothL1Loss, optimizer=optim.RMSprop, gamma=0.99,
                  epsilon_scheduler=StepDecayScheduler(), epsilon_scheduler_use_steps=True, target_update_steps=1e4,
                  parameter_update_frequency=1, grad_clamp=None, mb_size=32, replay_buffer_size=100000,
@@ -27,7 +27,7 @@ class DQNAgent(BaseAgent):
                 self.replay_buffer_min_experience = self.mb_size
             self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
         self.transitions = namedtuple('Transition', 'state action reward next_state done')
-        super().__init__(model_class, model_params, rng, device, n_episodes, n_eval_steps, lr, momentum, criterion,
+        super().__init__(model_class, model_params, rng, device, n_episodes, evaluation_frequency, lr, momentum, criterion,
                          optimizer, gamma, epsilon_scheduler, epsilon_scheduler_use_steps, target_update_steps,
                          parameter_update_frequency, grad_clamp)
 
@@ -52,8 +52,8 @@ class DQNAgent(BaseAgent):
                 o = o_
             self._episode_updates()
             returns.append(ret)
-            if (ep+1) % 100 == 0 and len(returns) >= 100:
-                print('mean prev 100 returns:', ep, ':', np.mean(returns[-100:]))
+            if (ep+1) % self.evaluation_frequency == 0:
+                print('mean prev', self.evaluation_frequency, ' returns:', ep, ':', np.mean(returns))
                 print('ep:', ep, end=' ')
                 self._eval(eval_env)
                 returns = []

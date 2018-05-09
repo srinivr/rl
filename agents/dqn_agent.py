@@ -4,16 +4,16 @@ import torch.optim as optim
 
 from agents.base_agent import BaseAgent
 from utils.replay_buffer import ReplayBuffer
-from utils.scheduler.decay_scheduler import StepDecayScheduler
+from utils.scheduler.decay_scheduler import DecayScheduler
 from collections import namedtuple
 import numpy as np
 
 
 class DQNAgent(BaseAgent):
 
-    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, evaluation_frequency=100, lr=1e-3,
+    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, training_evaluation_frequency=100, lr=1e-3,
                  momentum=0.9, criterion=nn.SmoothL1Loss, optimizer=optim.RMSprop, gamma=0.99,
-                 epsilon_scheduler=StepDecayScheduler(), epsilon_scheduler_use_steps=True, target_update_steps=1e4,
+                 epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4,
                  parameter_update_frequency=1, grad_clamp=None, mb_size=32, replay_buffer_size=100000,
                  replay_buffer_min_experience=None):
 
@@ -27,8 +27,8 @@ class DQNAgent(BaseAgent):
                 self.replay_buffer_min_experience = self.mb_size
             self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
         self.transitions = namedtuple('Transition', 'state action reward next_state done')
-        super().__init__(model_class, model_params, rng, device, n_episodes, evaluation_frequency, lr, momentum, criterion,
-                         optimizer, gamma, epsilon_scheduler, epsilon_scheduler_use_steps, target_update_steps,
+        super().__init__(model_class, model_params, rng, device, n_episodes, training_evaluation_frequency, lr, momentum, criterion,
+                         optimizer, gamma, epsilon_scheduler, epsilon_scheduler_use_steps, target_synchronize_steps,
                          parameter_update_frequency, grad_clamp)
 
     def learn(self, env, eval_env=None):
@@ -52,8 +52,8 @@ class DQNAgent(BaseAgent):
                 o = o_
             self._episode_updates()
             returns.append(ret)
-            if (ep+1) % self.evaluation_frequency == 0:
-                print('mean prev', self.evaluation_frequency, ' returns:', ep, ':', np.mean(returns))
+            if (ep+1) % self.training_evaluation_frequency == 0:
+                print('mean prev', self.training_evaluation_frequency, ' returns:', ep, ':', np.mean(returns))
                 print('ep:', ep, end=' ')
                 self._eval(eval_env)
                 returns = []

@@ -8,7 +8,7 @@ import torch
 class BaseAgent:
 
     def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, training_evaluation_frequency=100,
-                 optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum':0.9}, criterion=nn.SmoothL1Loss,
+                 optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True,
                  target_synchronize_steps=1e4, parameter_update_frequency=1, grad_clamp=None):
 
@@ -16,7 +16,7 @@ class BaseAgent:
         self.rng = rng
         self.device = device
         self.n_episodes = n_episodes
-        self.training_evaluation_frequency = training_evaluation_frequency  # steps or episodes depending on the context! TODO improve?
+        self.training_evaluation_frequency = training_evaluation_frequency  # steps or episodes depending on learn()
         self.criterion = criterion()
         self.gamma = gamma
         self.epsilon_scheduler = epsilon_scheduler
@@ -56,12 +56,12 @@ class BaseAgent:
         return self.epsilon_scheduler.get_epsilon(self.elapsed_model_steps) if self.epsilon_scheduler_use_steps \
             else self.epsilon_scheduler.get_epsilon(self.elapsed_episodes)
 
-    def _get_epsilon_greedy_action(self, env, o):
+    def _get_epsilon_greedy_action(self, env, states):
         if np.random.random() < self._get_epsilon():
             action = self._get_sample_action(env)
         else:
             self.model_learner.eval()
-            action = self._get_action_from_model(self.model_learner, o)
+            action = self._get_action_from_model(self.model_learner, states)
         o_, reward, done, info = env.step(action)
         self.elapsed_env_steps += 1
         return action, o_, reward, done, info
@@ -89,9 +89,10 @@ class BaseAgent:
         if not self.epsilon_scheduler_use_steps:
             self.epsilon_scheduler.step()
 
-    def _step_updates(self, states, actions, targets):  # inputs: pytorch tensors
+    def _step_updates(self, states, actions, targets, auxiliary_l_s_t=None): # TODO check if forward pass again?
         """
-        Given a batch, update learner model, increment number of model updates (and possibly synchronize target model)
+        Given a pytorch batch, update learner model, increment number of model updates
+        (and possibly synchronize target model)
         """
         if states.size()[0] < 2:  # TODO do this only when batchnorm is used?
             print('Batch has only 1 example. Can cause problems if batch norm was used.. Skipping step')

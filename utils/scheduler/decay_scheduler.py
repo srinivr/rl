@@ -1,4 +1,4 @@
-class StepDecayScheduler:
+class DecayScheduler:
     def __init__(self, initial_epsilon=1., lower_bound=0., decay=0.99988, do_decay=True):
         self.epsilon = initial_epsilon
         self.lower_bound = lower_bound

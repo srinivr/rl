@@ -11,11 +11,11 @@ import numpy as np
 
 class DQNAgent(BaseAgent):
 
-    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, training_evaluation_frequency=100, lr=1e-3,
-                 momentum=0.9, criterion=nn.SmoothL1Loss, optimizer=optim.RMSprop, gamma=0.99,
-                 epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4,
-                 parameter_update_frequency=1, grad_clamp=None, mb_size=32, replay_buffer_size=100000,
-                 replay_buffer_min_experience=None):
+    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, training_evaluation_frequency=100,
+                 optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
+                 gamma=0.99, epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True,
+                 target_synchronize_steps=1e4, parameter_update_frequency=1, grad_clamp=None, mb_size=32,
+                 replay_buffer_size=100000, replay_buffer_min_experience=None):
 
         self.mb_size = mb_size
         self.replay_buffer_size = replay_buffer_size
@@ -27,9 +27,9 @@ class DQNAgent(BaseAgent):
                 self.replay_buffer_min_experience = self.mb_size
             self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
         self.transitions = namedtuple('Transition', 'state action reward next_state done')
-        super().__init__(model_class, model_params, rng, device, n_episodes, training_evaluation_frequency, lr, momentum, criterion,
-                         optimizer, gamma, epsilon_scheduler, epsilon_scheduler_use_steps, target_synchronize_steps,
-                         parameter_update_frequency, grad_clamp)
+        super().__init__(model_class, model_params, rng, device, n_episodes, training_evaluation_frequency, optimizer,
+                         optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
+                         target_synchronize_steps, parameter_update_frequency, grad_clamp)
 
     def learn(self, env, eval_env=None):
         if not eval_env:

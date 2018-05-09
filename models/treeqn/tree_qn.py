@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+# TODO reward grounding
 
 class PushModel(nn.Module):
     def __init__(self, n_input_channels, n_actions, depth=2, state_embedding=128, reward_embedding=64, gamma=0.99,
@@ -15,7 +16,7 @@ class PushModel(nn.Module):
         self.reward_embedding = reward_embedding
         self.convolution_dim_out = 48  # TODO automate this!
         self.softmax = nn.Softmax(dim=1)
-        self.encoding = nn.Sequential(
+        self.encoding_conv = nn.Sequential(
             nn.Conv2d(self.n_input_channels, 24, kernel_size=3, stride=1),  # TODO make these as params
             nn.ReLU(),
             nn.Conv2d(24, 24, kernel_size=3, stride=1),
@@ -23,19 +24,20 @@ class PushModel(nn.Module):
             nn.Conv2d(24, 48, kernel_size=4, stride=1),
             nn.ReLU(),
         )
-        self.fc_layer = nn.Sequential(
+        self.encoding_fc = nn.Sequential(
             nn.Linear(self.convolution_dim_out, 128),
-            nn.ReLU())
+            # nn.ReLU()
+        )
         self.action_independent_transition = nn.Sequential(
             nn.Linear(self.state_embedding, self.state_embedding),
-            nn.ReLU()
+            nn.Tanh()
         )
         # create actions * some units
         self.action_transition = nn.ModuleList()
         for _ in range(self.n_actions):
             self.action_transition.append(nn.Sequential(
-                nn.Linear(self.state_embedding, self.state_embedding),
-                nn.ReLU()
+                nn.Linear(self.state_embedding, self.state_embedding, bias=False),  # turn off bias for action dependent transition
+                nn.Tanh()
             ))
         self.reward_fn = nn.Sequential(
             nn.Linear(self.state_embedding, self.reward_embedding),
@@ -48,10 +50,10 @@ class PushModel(nn.Module):
 
     def forward(self, x):
         # TODO residual connections
-        x = self.encoding(x)
+        x = self.encoding_conv(x)
         x = x.view(x.size(0), -1)
-        x = self.fc_layer(x)
-        x = self.action_independent_transition(x)
+        x = self.encoding_fc(x)
+        x = x + self.action_independent_transition(x)  # residual connection
         return self._q_a(x, 0)
 
     def _backup_fn(self, q_a):
@@ -64,10 +66,9 @@ class PushModel(nn.Module):
         r_n = self.reward_fn(s)
         v_n = []
         for idx in range(self.n_actions):
-            transition = self.action_transition[idx](s)
+            transition = s + self.action_transition[idx](s)  # residual connection
             transition = transition / transition.norm()
-            v = self._v_fn(transition, depth + 1)
-            v_n.append(v)
+            v_n.append(self._v_fn(transition, depth + 1))
         v_n = torch.cat(v_n, dim=1)
         return r_n + self.gamma * v_n
 

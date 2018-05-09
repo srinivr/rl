@@ -49,7 +49,7 @@ class BaseAgent:
         assert action_type == 'list' or action_type == 'scalar'
         model.eval()
         model_in = torch.tensor(o, device=self.device, dtype=torch.float)
-        for _ in range(2 - o.ndim):  # create a 2D tensor if input is 0D or 1D
+        for _ in range(4 - o.ndim):  # create a 2D tensor if input is 0D or 1D  # TODO: change
             model_in = model_in.unsqueeze(0)
         model_out = model(model_in).max(1)[1].detach().to('cpu').numpy()
         return model_out if action_type == 'list' else model_out[0]
@@ -68,7 +68,7 @@ class BaseAgent:
         self.elapsed_env_steps += 1
         return action, o_, reward, done, info
 
-    def _eval(self, env, n_episodes=100, action_type='scalar'):
+    def _eval(self, env, n_episodes=100, action_type='scalar'):  #TODO change specify option to change n_episodes
         """
         :param action_type: 'scalar' or 'list' whichever is appropriate for the environment
         """

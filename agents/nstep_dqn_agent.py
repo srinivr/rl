@@ -42,11 +42,6 @@ class NStepSynchronousDQNAgent(BaseAgent):
             for b, s in zip([batch_states, batch_actions, batch_next_states, batch_rewards, batch_done],
                             [step_states, step_actions, step_next_states, step_rewards, step_done]):
                 b.append(s)
-            # batch_states.append(step_states)
-            # batch_actions.append(step_actions)
-            # batch_next_states.append(step_next_states)
-            # batch_rewards.append(step_rewards)
-            # batch_done.append(step_done)
             if self.elapsed_env_steps % self.n_step == 0:
                 states, actions, targets = self._get_batch(batch_states, batch_actions, batch_next_states,
                                                            batch_rewards,

@@ -3,7 +3,7 @@ from multiprocessing import Process, Pipe
 from utils.vec_env import VecEnv, CloudpickleWrapper
 
 """
-copied from OpenAI baselines. MODIFICATION: make it suitable for episodes (was steps)
+copied from OpenAI baselines.
 """
 
 

@@ -31,7 +31,7 @@ class PushModel(nn.Module):
             nn.ReLU()
         )
         # create actions * some units
-        self.action_transition = []
+        self.action_transition = nn.ModuleList()
         for _ in range(self.n_actions):
             self.action_transition.append(nn.Sequential(
                 nn.Linear(self.state_embedding, self.state_embedding),

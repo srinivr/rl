@@ -2,7 +2,6 @@ import gym
 import numpy as np
 from gym.utils import seeding
 from gym import spaces
-from scipy.misc import imresize
 import sys
 import copy
 

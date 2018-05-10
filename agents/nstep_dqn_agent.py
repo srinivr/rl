@@ -18,11 +18,11 @@ class NStepSynchronousDQNAgent(BaseAgent):
     def __init__(self, model_class, model_params, rng, device='cpu', training_evaluation_frequency=100, optimizer=optim.RMSprop,
                  optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss, gamma=0.99,
                  epsilon_scheduler=DecayScheduler(decay=0.999995), target_synchronize_steps=1e4,
-                 parameter_update_frequency=1, grad_clamp=None, n_step=5, n_envs=1):
+                 parameter_update_frequency=1, grad_clamp=None, n_step=5, n_processes=1):
 
         self.n_step = n_step
-        self.n_envs = n_envs
-        target_synchronize_steps = max(1, int(target_synchronize_steps // self.n_step))  # model is updated every n_step hence divide by n_step
+        self.n_processes = n_processes
+        target_synchronize_steps = max(1, int(target_synchronize_steps // (self.n_step * self.n_processes)))  # model is updated every n_step hence divide by n_step
         self.batch_values = namedtuple('Values', 'done step_ctr rewards states actions targets')
         super().__init__(model_class, model_params, rng, device, None, training_evaluation_frequency, optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, True, target_synchronize_steps,
@@ -33,7 +33,8 @@ class NStepSynchronousDQNAgent(BaseAgent):
         env and eval_env should be different! (since we are using SubProcvecEnv and _eval calls env.reset())
         """
         assert eval_env is not None
-        max_steps = 10000000  # TODO change hardcoded value
+        max_steps = 10000000
+        # TODO change hardcoded value
         batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, = [], [], [], [], []
         step_states = envs.reset()
         while self.elapsed_env_steps < max_steps:
@@ -66,7 +67,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
         return torch.cat(states), torch.cat(actions), torch.cat(targets)
 
     def _get_sample_action(self, envs):
-        return [envs.action_space.sample() for _ in range(self.n_envs)]
+        return [envs.action_space.sample() for _ in range(self.n_processes)]
 
     def _get_action_from_model(self, model, o, action_type='list'):
         return super()._get_action_from_model(model, o, action_type)

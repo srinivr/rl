@@ -47,7 +47,7 @@ class BaseAgent:
         assert action_type == 'list' or action_type == 'scalar'
         model.eval()
         model_in = torch.tensor(state, device=self.device, dtype=torch.float)
-        for _ in range(2 - state.ndim):  # create a 2D tensor if input is 0D or 1D  # TODO: (HIGH PRIORITY) change
+        for _ in range(4 - state.ndim):  # create a 2D tensor if input is 0D or 1D  # TODO: (HIGH PRIORITY) change
             model_in = model_in.unsqueeze(0)
         model_out = model(model_in)
         actions = model_out.max(1)[1].detach().to('cpu').numpy()
@@ -99,8 +99,8 @@ class BaseAgent:
             print('Batch has only 1 example. Can cause problems if batch norm was used.. Skipping step')
             return
         self.model_learner.train()
-        outputs = self.model_learner(states).gather(1, actions)
-        loss = self.criterion(outputs, targets)
+        outputs = self.model_learner(states).gather(1, actions.view(-1, 1))
+        loss = self.criterion(outputs, targets.view(-1, 1))
         self.optimizer.zero_grad()
         loss.backward()
         if self.grad_clamp:
@@ -133,7 +133,7 @@ class BaseAgent:
             self.model_target.eval()
             targets[non_final_mask] += self.gamma * self.model_target(_next_non_final_states).max(1)[0].detach() # max along a dim returns 1D
         targets += rewards
-        return states, actions.view(-1, 1), targets.view(-1, 1)
+        return states, actions, targets
 
     # TODO when doing linear decay
     #       epsilon decayed after every environment step (after buffer is adequately filled in DQN) but model step is

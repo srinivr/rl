@@ -32,7 +32,7 @@ if experiment == 'CartPoleDQN':
 elif experiment == 'CartPoleNStepSynchronousDQN':
     env_name = 'CartPole-v0'
     env = gym.make(env_name)
-    nproc = 16
+    nproc = 8
     envs = [make_env(env_name, seed) for seed in range(nproc)]
 
     envs = SubprocVecEnv(envs) # target_sync = 10e4 * n_proc

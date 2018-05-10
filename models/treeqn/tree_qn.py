@@ -3,6 +3,7 @@ import torch.nn as nn
 
 # TODO reward grounding
 
+
 class PushModel(nn.Module):
     def __init__(self, n_input_channels, n_actions, depth=2, state_embedding=128, reward_embedding=64, gamma=0.99,
                  lambd=1):
@@ -49,7 +50,6 @@ class PushModel(nn.Module):
         )
 
     def forward(self, x):
-        # TODO residual connections
         x = self.encoding_conv(x)
         x = x.view(x.size(0), -1)
         x = self.encoding_fc(x)

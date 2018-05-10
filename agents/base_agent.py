@@ -7,15 +7,14 @@ import torch
 
 class BaseAgent:
 
-    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, training_evaluation_frequency=100,
+    def __init__(self, model_class, model_params, rng, device='cpu', training_evaluation_frequency=100,
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True,
-                 target_synchronize_steps=1e4, parameter_update_frequency=1, grad_clamp=None):
+                 target_synchronize_steps=1e4, parameter_update_steps=1, grad_clamp=None):
 
         self.model_class = model_class
         self.rng = rng
         self.device = device
-        self.n_episodes = n_episodes
         self.training_evaluation_frequency = training_evaluation_frequency  # steps or episodes depending on learn()
         self.criterion = criterion()
         self.gamma = gamma
@@ -24,7 +23,7 @@ class BaseAgent:
         self.model_learner = self.model_class(*model_params)
         self.model_target = self.model_class(*model_params)
         self.target_synchronize_steps = target_synchronize_steps
-        self.parameter_update_frequency = parameter_update_frequency
+        self.parameter_update_steps = parameter_update_steps
         self.grad_clamp = grad_clamp
         self.model_learner.to(self.device)
         self.model_target.to(self.device)
@@ -40,17 +39,19 @@ class BaseAgent:
     def _get_sample_action(self, env):
         raise NotImplementedError
 
-    def _get_action_from_model(self, model, o, action_type):
+    def _get_action_from_model(self, model, state, action_type):
         """
-        :param action_type: 'scalar' or 'list'
+        :param: action_type: 'scalar' or 'list'
+        :return: action from model, model outputs
         """
         assert action_type == 'list' or action_type == 'scalar'
         model.eval()
-        model_in = torch.tensor(o, device=self.device, dtype=torch.float)
-        for _ in range(4 - o.ndim):  # create a 2D tensor if input is 0D or 1D  # TODO: change
+        model_in = torch.tensor(state, device=self.device, dtype=torch.float)
+        for _ in range(4 - state.ndim):  # create a 2D tensor if input is 0D or 1D  # TODO: (HIGH PRIORITY) change
             model_in = model_in.unsqueeze(0)
-        model_out = model(model_in).max(1)[1].detach().to('cpu').numpy()
-        return model_out if action_type == 'list' else model_out[0]
+        model_out = model(model_in)
+        actions = model_out.max(1)[1].detach().to('cpu').numpy()
+        return actions if action_type == 'list' else actions[0]  # , model_out
 
     def _get_epsilon(self, *args):
         return self.epsilon_scheduler.get_epsilon(self.elapsed_model_steps) if self.epsilon_scheduler_use_steps \
@@ -66,7 +67,7 @@ class BaseAgent:
         self.elapsed_env_steps += 1
         return action, o_, reward, done, info
 
-    def _eval(self, env, n_episodes=100, action_type='scalar'):  #TODO change specify option to change n_episodes
+    def _eval(self, env, n_episodes=100, action_type='scalar'):  # TODO change specify option to change n_episodes
         """
         :param action_type: 'scalar' or 'list' whichever is appropriate for the environment
         """
@@ -89,7 +90,7 @@ class BaseAgent:
         if not self.epsilon_scheduler_use_steps:
             self.epsilon_scheduler.step()
 
-    def _step_updates(self, states, actions, targets, auxiliary_l_s_t=None): # TODO check if forward pass again?
+    def _step_updates(self, states, actions, targets):
         """
         Given a pytorch batch, update learner model, increment number of model updates
         (and possibly synchronize target model)
@@ -98,8 +99,8 @@ class BaseAgent:
             print('Batch has only 1 example. Can cause problems if batch norm was used.. Skipping step')
             return
         self.model_learner.train()
-        outputs = self.model_learner(states).gather(1, actions.view(actions.size()[0], -1))
-        loss = self.criterion(outputs, targets.view(targets.size()[0], -1))
+        outputs = self.model_learner(states).gather(1, actions.view(-1, 1))
+        loss = self.criterion(outputs, targets.view(-1, 1))
         self.optimizer.zero_grad()
         loss.backward()
         if self.grad_clamp:
@@ -116,6 +117,7 @@ class BaseAgent:
     def _get_batch(self, batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, future_target=None):
         """
         Construct pytorch batch tensors for _step_updates.
+        :param batch_actions: 1D
         :param future_target: if not None, use it as next step backup value (useful for n-step updates)
         """
         float_args = dict(device=self.device, dtype=torch.float)
@@ -128,11 +130,8 @@ class BaseAgent:
             targets[non_final_mask] += self.gamma * future_target[non_final_mask]
         elif not all(batch_done):
             _next_non_final_states = torch.tensor(batch_next_states, **float_args)[non_final_mask]
-            # TODO check below!
-            # next_non_final_states = torch.tensor([s for s, d in zip(batch_next_states, batch_done) if not d], **float_args)
-            # print('_nnfs', len(_next_non_final_states), 'nnfs:', len(next_non_final_states), torch.sum(_next_non_final_states - next_non_final_states))
             self.model_target.eval()
-            targets[non_final_mask] += self.gamma * self.model_target(_next_non_final_states).max(1)[0].detach()
+            targets[non_final_mask] += self.gamma * self.model_target(_next_non_final_states).max(1)[0].detach() # max along a dim returns 1D
         targets += rewards
         return states, actions, targets
 

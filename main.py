@@ -19,8 +19,8 @@ def make_env(env_id, seed):
     return _f
 
 
-experiment = 'CartPoleNStepSynchronousDQN'
-device = 'cpu'
+experiment = 'PushNStepSyncDQN'
+device = 'cuda'
 
 if experiment == 'CartPoleDQN':
     env = gym.make('CartPole-v0')
@@ -35,23 +35,23 @@ elif experiment == 'CartPoleNStepSynchronousDQN':
     nproc = 8
     envs = [make_env(env_name, seed) for seed in range(nproc)]
 
-    envs = SubprocVecEnv(envs)
-    agent = NStepSynchronousDQNAgent(SimpleCartPoleModel, [4, 2], None, n_envs=nproc, device=device,
+    envs = SubprocVecEnv(envs) # target_sync = 10e4 * n_proc
+    agent = NStepSynchronousDQNAgent(SimpleCartPoleModel, [4, 2], None, n_processes=nproc, device=device,
                                      target_synchronize_steps=10000, grad_clamp=[-1, 1], training_evaluation_frequency=10000)
     agent.learn(envs, env)
 
 elif experiment == 'PushNStepSyncDQN':
     env_name = 'Push-v0'
     env = gym.make(env_name)
-    nproc = 8
+    nproc = 16
     envs = [make_env(env_name, seed) for seed in range(nproc)]
 
     envs = SubprocVecEnv(envs)
     # params
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
-    agent = NStepSynchronousDQNAgent(PushModel, [5, 4, 2], None, n_envs=nproc, device=device,
+    agent = NStepSynchronousDQNAgent(PushModel, [5, 4, 2], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
-                                     grad_clamp=[-1, 1], training_evaluation_frequency=40000,
+                                     grad_clamp=[-1, 1], training_evaluation_frequency=2500,
                                      epsilon_scheduler=LinearScheduler())
     agent.learn(envs, env)
 
@@ -60,7 +60,7 @@ elif experiment == 'PushDQN':
     env = gym.make(env_name)
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
     agent = DQNAgent(PushModel, [5, 4, 2], None, device=device, optimizer_parameters=optimizer_parameters,
-                     target_synchronize_steps=40000, grad_clamp=[-1, 1], training_evaluation_frequency=40000,
+                     target_synchronize_steps=40000, grad_clamp=[-1, 1], training_evaluation_frequency=2500,
                      epsilon_scheduler=LinearScheduler(), epsilon_scheduler_use_steps=True
                      )
     agent.learn(env, env)

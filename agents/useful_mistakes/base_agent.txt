@@ -1,0 +1,19 @@
+# using cached outputs in updates
+# problem: eval called in forward pass
+'''
+        '''
+        if computed_outputs:
+            states_to_compute = states[1 - computed_flags]
+            if states_to_compute.size()[0] == 0:  # all computed
+                outputs = torch.cat(computed_outputs)
+            else:
+                outputs = torch.zeros(targets.size())
+                non_computed_flags = 1 - computed_flags
+                outputs[non_computed_flags] = self.model_learner(states_to_compute).gather(1,
+                                                                                           actions[non_computed_flags])
+                outputs[computed_flags] = torch.cat([output for flag, output in zip(computed_flags, computed_outputs) if
+                                                     flag])
+        else:
+            outputs = self.model_learner(states).gather(1, actions)
+        '''
+        '''

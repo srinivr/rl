@@ -17,7 +17,7 @@ class WrongNStepSynchronousDQNAgent(BaseAgent):
 
     def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, lr=1e-3, momentum=0.9,
                  criterion=nn.SmoothL1Loss, optimizer=optim.RMSprop, gamma=0.99, epsilon_scheduler=DecayScheduler(),
-                 epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4, parameter_update_frequency=1,
+                 epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4, parameter_update_steps=1,
                  grad_clamp=None, n_step=5, n_envs=1):
 
         self.n_step = n_step
@@ -26,7 +26,7 @@ class WrongNStepSynchronousDQNAgent(BaseAgent):
         self.batch_values = namedtuple('Values', 'done step_ctr rewards states actions targets')
         super().__init__(model_class, model_params, rng, device, n_episodes, lr, momentum, criterion, optimizer, gamma,
                          epsilon_scheduler, epsilon_scheduler_use_steps, target_synchronize_steps,
-                         parameter_update_frequency, grad_clamp)
+                         parameter_update_steps, grad_clamp)
 
     def learn(self, envs):
         float_args = dict(device=self.device, dtype=torch.float)

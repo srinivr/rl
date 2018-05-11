@@ -1,10 +1,11 @@
-import torch
+from models.base_model import BaseModel
+from collections import namedtuple
 import torch.nn as nn
 
 
-class SimpleCartPoleModel(nn.Module):
+class SimpleCartPoleModel(BaseModel):
     def __init__(self, input_dim, output_dim):
-        super(SimpleCartPoleModel, self).__init__()
+        super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.embedding = 24
@@ -19,4 +20,9 @@ class SimpleCartPoleModel(nn.Module):
         )
 
     def forward(self, x):
-        return self.fc_layers(x)
+        return self.output_tuple(self.fc_layers(x))
+
+    @staticmethod
+    def get_input_dimension():
+        return 1
+

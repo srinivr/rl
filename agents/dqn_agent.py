@@ -15,7 +15,7 @@ class DQNAgent(BaseAgent):
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True,
                  target_synchronize_steps=1e4, parameter_update_steps=1, grad_clamp=None, mb_size=32,
-                 replay_buffer_size=100000, replay_buffer_min_experience=None):
+                 replay_buffer_size=100000, replay_buffer_min_experience=None, auxiliary_losses=None):
 
         self.n_episodes = n_episodes
         self.mb_size = mb_size
@@ -30,7 +30,7 @@ class DQNAgent(BaseAgent):
         self.transitions = namedtuple('Transition', 'state action reward next_state done')
         super().__init__(model_class, model_params, rng, device, training_evaluation_frequency, optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
-                         target_synchronize_steps, parameter_update_steps, grad_clamp)
+                         target_synchronize_steps, parameter_update_steps, grad_clamp, auxiliary_losses)
 
     def learn(self, env, eval_env=None):
         if not eval_env:
@@ -48,8 +48,8 @@ class DQNAgent(BaseAgent):
                 if self._is_gather_experience():
                     continue
                 # self.epsilon_scheduler.set_do_decay()  # decay since replay buffer is adequately filled
-                states, actions, targets = self.__get_batch()  # note: __ not _
-                self._step_updates(states, actions, targets)
+                states, actions, rewards, targets = self.__get_batch()  # note: __ not _
+                self._step_updates(states, actions, rewards, targets)
                 o = o_
             self._episode_updates()
             returns.append(ret)

@@ -10,7 +10,7 @@ class BaseAgent:
     def __init__(self, model_class, model_params, rng, device='cpu', training_evaluation_frequency=100,
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True,
-                 target_synchronize_steps=1e4, parameter_update_steps=1, grad_clamp=None):
+                 target_synchronize_steps=1e4, parameter_update_steps=1, grad_clamp=None, auxiliary_losses=None):
 
         self.model_class = model_class
         self.rng = rng
@@ -22,9 +22,11 @@ class BaseAgent:
         self.epsilon_scheduler_use_steps = epsilon_scheduler_use_steps
         self.model_learner = self.model_class(*model_params)
         self.model_target = self.model_class(*model_params)
-        self.target_synchronize_steps = target_synchronize_steps
+        self.target_synchronize_steps = target_synchronize_steps  # global steps across processes
         self.parameter_update_steps = parameter_update_steps
         self.grad_clamp = grad_clamp
+        self.auxiliary_losses = auxiliary_losses
+
         self.model_learner.to(self.device)
         self.model_target.to(self.device)
         self.optimizer = optimizer(self.model_learner.parameters(), **optimizer_parameters)
@@ -47,10 +49,10 @@ class BaseAgent:
         assert action_type == 'list' or action_type == 'scalar'
         model.eval()
         model_in = torch.tensor(state, device=self.device, dtype=torch.float)
-        for _ in range(4 - state.ndim):  # create a 2D tensor if input is 0D or 1D  # TODO: (HIGH PRIORITY) change
+        for _ in range(self.model_class.get_input_dimension() + 1 - state.ndim):  # create a 2D tensor if input is 0D or 1D
             model_in = model_in.unsqueeze(0)
         model_out = model(model_in)
-        actions = model_out.max(1)[1].detach().to('cpu').numpy()
+        actions = model_out.q_values.max(1)[1].detach().to('cpu').numpy()
         return actions if action_type == 'list' else actions[0]  # , model_out
 
     def _get_epsilon(self, *args):
@@ -73,16 +75,18 @@ class BaseAgent:
         """
         returns = []
         self.model_target.eval()
+        len = 0
         for ep in range(n_episodes):
             o = env.reset()
             done = False
             ret = 0
             while not done:
+                len += 1
                 action = self._get_action_from_model(self.model_target, o, action_type)
                 o, rew, done, info = env.step(action)
                 ret += rew
             returns.append(ret)
-        print('mean eval return:', np.mean(returns))
+        print('mean eval return:', np.mean(returns), '..avg episode length:', len/n_episodes)
         print()
 
     def _episode_updates(self):
@@ -90,7 +94,7 @@ class BaseAgent:
         if not self.epsilon_scheduler_use_steps:
             self.epsilon_scheduler.step()
 
-    def _step_updates(self, states, actions, targets):
+    def _step_updates(self, states, actions, rewards, targets):
         """
         Given a pytorch batch, update learner model, increment number of model updates
         (and possibly synchronize target model)
@@ -99,9 +103,13 @@ class BaseAgent:
             print('Batch has only 1 example. Can cause problems if batch norm was used.. Skipping step')
             return
         self.model_learner.train()
-        outputs = self.model_learner(states).gather(1, actions.view(-1, 1))
-        loss = self.criterion(outputs, targets.view(-1, 1))
         self.optimizer.zero_grad()
+        outputs = self.model_learner(states)
+        q_outputs = outputs.q_values.gather(1, actions.view(-1, 1))
+        loss = self.criterion(q_outputs, targets.view(-1, 1))
+        if self.auxiliary_losses:
+            for l in self.auxiliary_losses:
+                loss += l.get_loss(outputs, actions, rewards)
         loss.backward()
         if self.grad_clamp:
             for p in self.model_learner.parameters():
@@ -131,9 +139,10 @@ class BaseAgent:
         elif not all(batch_done):
             _next_non_final_states = torch.tensor(batch_next_states, **float_args)[non_final_mask]
             self.model_target.eval()
-            targets[non_final_mask] += self.gamma * self.model_target(_next_non_final_states).max(1)[0].detach() # max along a dim returns 1D
+            targets[non_final_mask] += self.gamma * self.model_target(_next_non_final_states).q_values.max(1)[0]\
+                .detach()  # max along a dim returns 1D
         targets += rewards
-        return states, actions, targets
+        return states, actions, rewards, targets
 
     # TODO when doing linear decay
     #       epsilon decayed after every environment step (after buffer is adequately filled in DQN) but model step is

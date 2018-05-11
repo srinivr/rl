@@ -1,17 +1,23 @@
+import torch
+
 from agents.nstep_dqn_agent import NStepSynchronousDQNAgent
 from models.classic_control.simple_cartpole_model import SimpleCartPoleModel
 import gym
 import envs.treeqn.push
+from envs.atari.atari_wrapper import wrap_deepmind
 from agents.dqn_agent import DQNAgent
-from models.treeqn.tree_qn import PushModel
-from utils.scheduler.LinearScheduler import LinearScheduler
+from models.treeqn.push_model import PushModel
+from utils.auxiliary_losses.tree_reward_loss import TreeRewardLoss
+from utils.scheduler.linear_scheduler import LinearScheduler
 from utils.scheduler.decay_scheduler import DecayScheduler
 from utils.vec_env.subproc_vec_env import SubprocVecEnv
+import torch.nn as nn
 
 
 def make_env(env_id, seed):
     def _f():
         env = gym.make(env_id)
+        #env = wrap_deepmind(env)
         # print('max_steps:', env._max_episode_steps)
         env.seed(seed)
         return env
@@ -35,9 +41,9 @@ elif experiment == 'CartPoleNStepSynchronousDQN':
     nproc = 8
     envs = [make_env(env_name, seed) for seed in range(nproc)]
 
-    envs = SubprocVecEnv(envs) # target_sync = 10e4 * n_proc
+    envs = SubprocVecEnv(envs)  # target_sync = 10e4 * n_proc
     agent = NStepSynchronousDQNAgent(SimpleCartPoleModel, [4, 2], None, n_processes=nproc, device=device,
-                                     target_synchronize_steps=10000, grad_clamp=[-1, 1], training_evaluation_frequency=10000)
+                                     target_synchronize_steps=80000, grad_clamp=[-1, 1], training_evaluation_frequency=10000)
     agent.learn(envs, env)
 
 elif experiment == 'PushNStepSyncDQN':
@@ -51,8 +57,8 @@ elif experiment == 'PushNStepSyncDQN':
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
     agent = NStepSynchronousDQNAgent(PushModel, [5, 4, 2], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
-                                     grad_clamp=[-1, 1], training_evaluation_frequency=2500,
-                                     epsilon_scheduler=LinearScheduler())
+                                     grad_clamp=[-1, 1], training_evaluation_frequency=2500, criterion=nn.MSELoss,
+                                     epsilon_scheduler=LinearScheduler(), auxiliary_losses=[TreeRewardLoss()])
     agent.learn(envs, env)
 
 elif experiment == 'PushDQN':
@@ -61,9 +67,35 @@ elif experiment == 'PushDQN':
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
     agent = DQNAgent(PushModel, [5, 4, 2], None, device=device, optimizer_parameters=optimizer_parameters,
                      target_synchronize_steps=40000, grad_clamp=[-1, 1], training_evaluation_frequency=2500,
-                     epsilon_scheduler=LinearScheduler(), epsilon_scheduler_use_steps=True
+                     epsilon_scheduler=LinearScheduler(), epsilon_scheduler_use_steps=True, criterion=nn.MSELoss
                      )
-    agent.learn(env, env)
+    agent.learn(envs, env)
 
-else:
-    raise IndexError
+elif experiment == 'SeaquestNStepSyncDQN':
+    env_name = 'SeaquestNoFrameskip-v4'
+    env = wrap_deepmind(gym.make(env_name))
+    nproc = 16
+    envs = [make_env(env_name, seed) for seed in range(nproc)]
+
+    envs = SubprocVecEnv(envs)
+    # params
+    optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
+    agent = NStepSynchronousDQNAgent(PushModel, [5, 4, 2], None, n_processes=nproc, device=device,
+                                     optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
+                                     grad_clamp=[-1, 1], training_evaluation_frequency=2500, criterion=nn.MSELoss,
+                                     epsilon_scheduler=LinearScheduler())
+    agent.learn(envs, env)
+elif experiment == 'debug':
+    env_name = 'Push-v0'
+    nproc = 16
+    envs = [make_env(env_name, seed) for seed in range(nproc)]
+
+    envs = SubprocVecEnv(envs)
+    model = PushModel(5, 4)
+    for param in model.parameters():
+        param.data = param.data - param.data + 1.
+        pass
+    s = envs.reset()
+    s = torch.tensor(s, dtype=torch.float, device=device)
+    output = model(s)
+    print('output:', output)

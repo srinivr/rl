@@ -7,12 +7,11 @@ import torch.nn as nn
 import torch.optim as optim
 from agents.base_agent import BaseAgent
 from utils.scheduler.decay_scheduler import DecayScheduler
-import numpy as np
 
 
 class NStepSynchronousDQNAgent(BaseAgent):
     """
-    https://arxiv.org/pdf/1710.11417.pdf (batched n-step)
+    https://arxiv.org/pdf/1710.11417.pdf (batched, up-to) n-step
     """
 
     def __init__(self, model_class, model_params, rng, device='cpu', max_steps=10000000,
@@ -45,29 +44,31 @@ class NStepSynchronousDQNAgent(BaseAgent):
                             [step_states, step_actions, step_next_states, step_rewards, step_done]):
                 b.append(s)
             if self.elapsed_env_steps % self.n_step == 0:
-                states, actions, rewards, targets = self._get_batch(batch_states, batch_actions,
+                states, actions, rewards, targets, batch_done = self.__get_batch(batch_states, batch_actions,
                                                                                         batch_next_states,
                                                                                         batch_rewards,  batch_done)  # batched n-step targets
-                self._step_updates(states, actions, rewards, targets)
+                #  notice above batch_done has been from list of lists to a list
+                self._step_updates(states, actions, rewards, targets, batch_done)
                 batch_states, batch_actions, batch_next_states, batch_rewards, batch_done = [], [], [], [], []
             step_states = step_next_states
             if self.elapsed_env_steps % self.training_evaluation_frequency == 0:
                 print('step:', self.elapsed_env_steps, end=' ')
                 self._eval(eval_env)
 
-    def _get_batch(self, batch_states, batch_actions, batch_next_states, batch_rewards, batch_done):
+    def __get_batch(self, batch_states, batch_actions, batch_next_states, batch_rewards, batch_done):
         """
         construct n_step targets using super()._get_batch()
         """
         states, actions, rewards, targets = [], [], [], []
         _targets = None
         for i in range(1, self.n_step + 1):
-            _states, _actions, _rewards, _targets = super()._get_batch(batch_states[-i], batch_actions[-i],
+            _states, _actions, _rewards, _targets, _ = super()._get_batch(batch_states[-i], batch_actions[-i],
                                                                        batch_next_states[-i], batch_rewards[-i],
                                                                        batch_done[-i], future_target=_targets)
             states.insert(0, _states), actions.insert(0, _actions), rewards.insert(0, _rewards), targets.insert(0,
                                                                                                                 _targets)
-        return torch.cat(states), torch.cat(actions), torch.cat(rewards),  torch.cat(targets)
+        batch_dones = list(itertools.chain(*batch_done))
+        return torch.cat(states), torch.cat(actions), torch.cat(rewards),  torch.cat(targets), batch_dones
 
     def _get_sample_action(self, envs):
         return [envs.action_space.sample() for _ in range(self.n_processes)]

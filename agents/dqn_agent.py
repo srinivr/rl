@@ -48,8 +48,8 @@ class DQNAgent(BaseAgent):
                 if self._is_gather_experience():
                     continue
                 # self.epsilon_scheduler.set_do_decay()  # decay since replay buffer is adequately filled
-                states, actions, rewards, targets = self.__get_batch()  # note: __ not _
-                self._step_updates(states, actions, rewards, targets)
+                states, actions, rewards, targets, batch_done = self.__get_batch()  # note: __ not _
+                self._step_updates(states, actions, rewards, targets, batch_done)
                 o = o_
             self._episode_updates()
             returns.append(ret)

@@ -94,10 +94,12 @@ class BaseAgent:
         if not self.epsilon_scheduler_use_steps:
             self.epsilon_scheduler.step()
 
-    def _step_updates(self, states, actions, rewards, targets):
+    def _step_updates(self, states, actions, rewards, targets, batch_done):
         """
         Given a pytorch batch, update learner model, increment number of model updates
         (and possibly synchronize target model)
+
+        :param batch_done: list
         """
         if states.size()[0] < 2:  # TODO do this only when batchnorm is used?
             print('Batch has only 1 example. Can cause problems if batch norm was used.. Skipping step')
@@ -109,7 +111,7 @@ class BaseAgent:
         loss = self.criterion(q_outputs, targets.view(-1, 1))
         if self.auxiliary_losses:
             for l in self.auxiliary_losses:
-                loss += l.get_loss(outputs, actions, rewards)
+                loss += l.get_loss(outputs, actions, rewards, batch_done)
         loss.backward()
         if self.grad_clamp:
             for p in self.model_learner.parameters():
@@ -142,7 +144,7 @@ class BaseAgent:
             targets[non_final_mask] += self.gamma * self.model_target(_next_non_final_states).q_values.max(1)[0]\
                 .detach()  # max along a dim returns 1D
         targets += rewards
-        return states, actions, rewards, targets
+        return states, actions, rewards, targets, batch_done
 
     # TODO when doing linear decay
     #       epsilon decayed after every environment step (after buffer is adequately filled in DQN) but model step is

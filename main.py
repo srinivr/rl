@@ -1,13 +1,14 @@
 import torch
 
 from agents.nstep_dqn_agent import NStepSynchronousDQNAgent
+from auxiliary_losses.tree_nstep_reward_loss import TreeNStepRewardLoss
 from models.classic_control.simple_cartpole_model import SimpleCartPoleModel
 import gym
 import envs.treeqn.push
-from envs.atari.atari_wrapper import wrap_deepmind
+#from envs.atari.atari_wrapper import wrap_deepmind
 from agents.dqn_agent import DQNAgent
 from models.treeqn.push_model import PushModel
-from utils.auxiliary_losses.tree_reward_loss import TreeRewardLoss
+from auxiliary_losses.tree_reward_loss import TreeRewardLoss
 from utils.scheduler.linear_scheduler import LinearScheduler
 from utils.scheduler.decay_scheduler import DecayScheduler
 from utils.vec_env.subproc_vec_env import SubprocVecEnv
@@ -58,7 +59,8 @@ elif experiment == 'PushNStepSyncDQN':
     agent = NStepSynchronousDQNAgent(PushModel, [5, 4, 2], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
                                      grad_clamp=[-1, 1], training_evaluation_frequency=2500, criterion=nn.MSELoss,
-                                     epsilon_scheduler=LinearScheduler(), auxiliary_losses=[TreeRewardLoss()])
+                                     epsilon_scheduler=LinearScheduler(), auxiliary_losses=[TreeNStepRewardLoss(2, 5,
+                                                                                                                nproc)])
     agent.learn(envs, env)
 
 elif experiment == 'PushDQN':

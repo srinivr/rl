@@ -27,7 +27,7 @@ class TreeNStepRewardLoss(AuxiliaryLoss):
                 targets.append(rewards[k])
                 action = actions[k]
                 outputs.append(reward_candidates[action])
-                if batch_done[i]:  # since depth = 0 has values always, sufficient to check here
+                if batch_done[k]:  # since depth = 0 has values always, sufficient to check here
                     break
                 curr_outputs = curr_outputs.next_rewards[action]
         outputs = torch.stack(outputs, dim=0)

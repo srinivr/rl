@@ -26,8 +26,15 @@ def make_env(env_id, seed):
     return _f
 
 
-experiment = 'PushNStepSyncDQN'
-device = 'cuda'
+cuda = False
+# experiment = 'PushNStepSyncDQN'
+# experiment = 'CartPoleDQN'
+experiment = 'CartPoleNStepSynchronousDQN'
+
+if cuda:
+    device = 'cuda'
+else:
+    device = 'cpu'
 
 if experiment == 'CartPoleDQN':
     env = gym.make('CartPole-v0')

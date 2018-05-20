@@ -30,11 +30,13 @@ class NStepSynchronousDQNAgent(BaseAgent):
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, True, target_synchronize_steps,
                          parameter_update_steps, grad_clamp, auxiliary_losses)
 
-    def learn(self, envs, eval_env):
+    def learn(self, envs, eval_env=None, n_eval_steps=100):
         """
         env and eval_env should be different! (since we are using SubProcvecEnv and _eval calls env.reset())
         """
-        assert eval_env is not None
+        # assert eval_env is not None
+        if not eval_env:
+            print('no evaluation environment specified. No results will be printed!!')
         batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, = [], [], [], [], []
         step_states = envs.reset()
         while self.elapsed_env_steps < self.max_steps:
@@ -51,9 +53,9 @@ class NStepSynchronousDQNAgent(BaseAgent):
                 self._step_updates(states, actions, rewards, targets, batch_done)
                 batch_states, batch_actions, batch_next_states, batch_rewards, batch_done = [], [], [], [], []
             step_states = step_next_states
-            if self.elapsed_env_steps % self.training_evaluation_frequency == 0:
+            if eval_env and self.elapsed_env_steps % self.training_evaluation_frequency == 0:
                 print('step:', self.elapsed_env_steps, end=' ')
-                self._eval(eval_env)
+                self._eval(eval_env, n_eval_steps)
 
     def __get_batch(self, batch_states, batch_actions, batch_next_states, batch_rewards, batch_done):
         """

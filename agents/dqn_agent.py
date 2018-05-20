@@ -32,9 +32,10 @@ class DQNAgent(BaseAgent):
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
                          target_synchronize_steps, parameter_update_steps, grad_clamp, auxiliary_losses)
 
-    def learn(self, env, eval_env=None):
+    def learn(self, env, eval_env=None, n_eval_episodes=100):
         if not eval_env:
-            eval_env = env
+        #     eval_env = env
+            print('no evaluation environment specified. evaluation will not be performed..')
         returns = []
         # self.epsilon_scheduler.set_no_decay()  # do not decay until replay buffer is adequately filled
         for ep in range(self.n_episodes):
@@ -54,9 +55,10 @@ class DQNAgent(BaseAgent):
             self._episode_updates()
             returns.append(ret)
             if (ep+1) % self.training_evaluation_frequency == 0:
-                print('mean prev', self.training_evaluation_frequency, ' returns:', ep, ':', np.mean(returns))
-                print('ep:', ep, end=' ')
-                self._eval(eval_env)
+                print('mean training return', self.training_evaluation_frequency, ' returns:', ep, ':', np.mean(returns))
+                if eval_env:
+                    print('ep:', ep, end=' ')
+                    self._eval(eval_env, n_eval_episodes)
                 returns = []
 
     def __get_batch(self):

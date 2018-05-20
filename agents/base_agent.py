@@ -35,7 +35,7 @@ class BaseAgent:
         self.elapsed_env_steps = 0
         self.elapsed_episodes = 0
 
-    def learn(self, env, eval_env=None):
+    def learn(self, env, eval_env=None, n_eval_episodes=100):
         raise NotImplementedError
 
     def _get_sample_action(self, env):

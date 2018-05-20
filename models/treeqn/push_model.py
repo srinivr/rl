@@ -3,7 +3,7 @@ from collections import namedtuple
 import torch.nn as nn
 
 
-# TODO tree-reward ground and model grounding
+# TODO3 model grounding
 
 
 class PushModel(TreeQNModel):
@@ -14,7 +14,7 @@ class PushModel(TreeQNModel):
         self.n_input_channels = n_input_channels
         self.convolution_dim_out = 48  # TODO automate this!
         super().__init__(n_actions, depth, state_embedding, reward_embedding, gamma, lambd, reward_grounding,
-                         model_grounding)  # TODO understand what's under the hood of PyTorch of nn.Module
+                         model_grounding)  # TODO what's under the hood of PyTorch of nn.Module
         self.encoding_convolution = nn.Sequential(
             nn.Conv2d(self.n_input_channels, 24, kernel_size=3, stride=1),  # TODO make these as params?
             nn.ReLU(),

@@ -14,7 +14,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
     https://arxiv.org/pdf/1710.11417.pdf (batched, up-to) n-step
     """
 
-    def __init__(self, model_class, model_params, rng, device='cpu', max_steps=10000000,
+    def __init__(self, experiment_id, model_class, model_params, rng, device='cpu', max_steps=10000000,
                  training_evaluation_frequency=100,
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=DecayScheduler(decay=0.999995), target_synchronize_steps=1e4,
@@ -26,7 +26,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
         target_synchronize_steps = max(1, int(target_synchronize_steps // (
                     self.n_step * self.n_processes)))  # model is updated every n_step hence divide by n_step
         self.batch_values = namedtuple('Values', 'done step_ctr rewards states actions targets')
-        super().__init__(model_class, model_params, rng, device, training_evaluation_frequency, optimizer,
+        super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency, optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, True, target_synchronize_steps,
                          parameter_update_steps, grad_clamp, auxiliary_losses)
 

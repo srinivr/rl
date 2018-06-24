@@ -38,7 +38,7 @@ else:
 
 if experiment == 'CartPoleDQN':
     env = gym.make('CartPole-v0')
-    agent = DQNAgent(SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=100000, device=device,
+    agent = DQNAgent(experiment, SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=100000, device=device,
                      epsilon_scheduler_use_steps=True, target_synchronize_steps=10000, grad_clamp=[-1, 1],
                      training_evaluation_frequency=100)
     agent.learn(env)
@@ -50,7 +50,7 @@ elif experiment == 'CartPoleNStepSynchronousDQN':
     envs = [make_env(env_name, seed) for seed in range(nproc)]
 
     envs = SubprocVecEnv(envs)  # target_sync = 10e4 * n_proc
-    agent = NStepSynchronousDQNAgent(SimpleCartPoleModel, [4, 2], None, n_processes=nproc, device=device,
+    agent = NStepSynchronousDQNAgent(experiment, SimpleCartPoleModel, [4, 2], None, n_processes=nproc, device=device,
                                      target_synchronize_steps=80000, grad_clamp=[-1, 1], training_evaluation_frequency=10000)
     agent.learn(envs, env)
 
@@ -63,7 +63,7 @@ elif experiment == 'PushNStepSyncDQN':
     envs = SubprocVecEnv(envs)
     # params
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
-    agent = NStepSynchronousDQNAgent(PushModel, [5, 4, 2], None, n_processes=nproc, device=device,
+    agent = NStepSynchronousDQNAgent(experiment, PushModel, [5, 4, 2], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
                                      grad_clamp=[-1, 1], training_evaluation_frequency=2500, criterion=nn.MSELoss,
                                      epsilon_scheduler=LinearScheduler(), auxiliary_losses=[TreeNStepRewardLoss(2, 5,
@@ -74,7 +74,7 @@ elif experiment == 'PushDQN':
     env_name = 'CartPole-v0'
     env = gym.make(env_name)
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
-    agent = DQNAgent(PushModel, [5, 4, 2], None, device=device, optimizer_parameters=optimizer_parameters,
+    agent = DQNAgent(experiment, PushModel, [5, 4, 2], None, device=device, optimizer_parameters=optimizer_parameters,
                      target_synchronize_steps=40000, grad_clamp=[-1, 1], training_evaluation_frequency=2500,
                      epsilon_scheduler=LinearScheduler(), epsilon_scheduler_use_steps=True, criterion=nn.MSELoss
                      )
@@ -89,7 +89,7 @@ elif experiment == 'SeaquestNStepSyncDQN':
     envs = SubprocVecEnv(envs)
     # params
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
-    agent = NStepSynchronousDQNAgent(PushModel, [5, 4, 2], None, n_processes=nproc, device=device,
+    agent = NStepSynchronousDQNAgent(experiment, PushModel, [5, 4, 2], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
                                      grad_clamp=[-1, 1], training_evaluation_frequency=2500, criterion=nn.MSELoss,
                                      epsilon_scheduler=LinearScheduler())

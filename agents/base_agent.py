@@ -3,11 +3,12 @@ import torch.optim as optim
 from utils.scheduler.decay_scheduler import DecayScheduler
 import numpy as np
 import torch
+from tensorboardX import SummaryWriter
 
 
 class BaseAgent:
 
-    def __init__(self, model_class, model_params, rng, device='cpu', training_evaluation_frequency=100,
+    def __init__(self, experiment_id, model_class, model_params, rng, device='cpu', training_evaluation_frequency=100,
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True,
                  target_synchronize_steps=1e4, parameter_update_steps=1, grad_clamp=None, auxiliary_losses=None):
@@ -34,6 +35,7 @@ class BaseAgent:
         self.elapsed_model_steps = 0
         self.elapsed_env_steps = 0
         self.elapsed_episodes = 0
+        self.writer = SummaryWriter(comment=experiment_id)
 
     def learn(self, env, eval_env=None, n_eval_episodes=100):
         raise NotImplementedError
@@ -88,6 +90,7 @@ class BaseAgent:
             returns.append(ret)
         print('mean eval return:', np.mean(returns), '..avg episode length:', len/n_episodes)
         print()
+        self.writer.add_scalar('data/eval_loss', np.mean(returns), self.elapsed_model_steps)
 
     def _episode_updates(self):
         self.elapsed_episodes += 1

@@ -11,11 +11,12 @@ import numpy as np
 
 class DQNAgent(BaseAgent):
 
-    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000, training_evaluation_frequency=100,
-                 optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
-                 gamma=0.99, epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True,
-                 target_synchronize_steps=1e4, parameter_update_steps=1, grad_clamp=None, mb_size=32,
-                 replay_buffer_size=100000, replay_buffer_min_experience=None, auxiliary_losses=None):
+    def __init__(self, experiment_id, model_class, model_params, rng, device='cpu', n_episodes=2000,
+                 training_evaluation_frequency=100, optimizer=optim.RMSprop, optimizer_parameters=
+                 {'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss, gamma=0.99, epsilon_scheduler=
+                 DecayScheduler(), epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4,
+                 parameter_update_steps=1, grad_clamp=None, mb_size=32, replay_buffer_size=100000,
+                 replay_buffer_min_experience=None, auxiliary_losses=None):
 
         self.n_episodes = n_episodes
         self.mb_size = mb_size
@@ -28,7 +29,7 @@ class DQNAgent(BaseAgent):
                 self.replay_buffer_min_experience = self.mb_size
             self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
         self.transitions = namedtuple('Transition', 'state action reward next_state done')
-        super().__init__(model_class, model_params, rng, device, training_evaluation_frequency, optimizer,
+        super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency, optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
                          target_synchronize_steps, parameter_update_steps, grad_clamp, auxiliary_losses)
 

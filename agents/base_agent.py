@@ -24,7 +24,7 @@ class BaseAgent:
         self.model_learner = self.model_class(*model_params)
         self.model_target = self.model_class(*model_params)
         self.target_synchronize_steps = target_synchronize_steps  # global steps across processes
-        self.parameter_update_steps = parameter_update_steps
+        # self.parameter_update_steps = parameter_update_steps
         self.grad_clamp = grad_clamp
         self.auxiliary_losses = auxiliary_losses
 
@@ -41,6 +41,9 @@ class BaseAgent:
         raise NotImplementedError
 
     def _get_sample_action(self, env):
+        raise NotImplementedError
+
+    def _get_n_steps(self):
         raise NotImplementedError
 
     def _get_action_from_model(self, model, state, action_type):
@@ -68,10 +71,10 @@ class BaseAgent:
             self.model_learner.eval()
             action = self._get_action_from_model(self.model_learner, states)
         o_, reward, done, info = env.step(action)
-        self.elapsed_env_steps += 1
+        self.elapsed_env_steps += self._get_n_steps()
         return action, o_, reward, done, info
 
-    def _eval(self, env, n_episodes=100, action_type='scalar'):  # TODO change specify option to change n_episodes
+    def _eval(self, env, n_episodes=100, action_type='scalar'):
         """
         :param action_type: 'scalar' or 'list' whichever is appropriate for the environment
         """
@@ -90,7 +93,7 @@ class BaseAgent:
             returns.append(ret)
         print('mean eval return:', np.mean(returns), '..avg episode length:', len/n_episodes)
         print()
-        self.writer.add_scalar('data/eval_loss', np.mean(returns), self.elapsed_model_steps)
+        self.writer.add_scalar('data/eval_loss', np.mean(returns), self.elapsed_env_steps)
 
     def _episode_updates(self):
         self.elapsed_episodes += 1

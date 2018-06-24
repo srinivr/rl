@@ -81,3 +81,6 @@ class DQNAgent(BaseAgent):
     def _get_action_from_model(self, model, state, action_type='scalar'):
         return super()._get_action_from_model(model, state, action_type)
 
+    def _get_n_steps(self):
+        return 1
+

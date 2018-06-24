@@ -28,8 +28,8 @@ def make_env(env_id, seed):
 
 cuda = False
 # experiment = 'PushNStepSyncDQN'
-# experiment = 'CartPoleDQN'
-experiment = 'CartPoleNStepSynchronousDQN'
+experiment = 'CartPoleDQN'
+# experiment = 'CartPoleNStepSynchronousDQN'
 
 if cuda:
     device = 'cuda'
@@ -41,7 +41,7 @@ if experiment == 'CartPoleDQN':
     agent = DQNAgent(experiment, SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=100000, device=device,
                      epsilon_scheduler_use_steps=True, target_synchronize_steps=10000, grad_clamp=[-1, 1],
                      training_evaluation_frequency=100)
-    agent.learn(env)
+    agent.learn(env, env)
 
 elif experiment == 'CartPoleNStepSynchronousDQN':
     env_name = 'CartPole-v0'
@@ -51,7 +51,7 @@ elif experiment == 'CartPoleNStepSynchronousDQN':
 
     envs = SubprocVecEnv(envs)  # target_sync = 10e4 * n_proc
     agent = NStepSynchronousDQNAgent(experiment, SimpleCartPoleModel, [4, 2], None, n_processes=nproc, device=device,
-                                     target_synchronize_steps=80000, grad_clamp=[-1, 1], training_evaluation_frequency=10000)
+                                     target_synchronize_steps=10000, grad_clamp=[-1, 1], training_evaluation_frequency=10000)
     agent.learn(envs, env)
 
 elif experiment == 'PushNStepSyncDQN':

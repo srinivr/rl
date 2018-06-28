@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from agents.base_agent import BaseAgent
+from td_losses.q_loss import QLoss
 from utils.replay_buffer import ReplayBuffer
 from utils.scheduler.decay_scheduler import DecayScheduler
 from collections import namedtuple
@@ -32,6 +33,7 @@ class DQNAgent(BaseAgent):
         super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency, optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
                          target_synchronize_steps, parameter_update_steps, grad_clamp, auxiliary_losses)
+        self.td_losses.append(QLoss())
 
     def learn(self, env, eval_env=None, n_eval_episodes=100):
         if not eval_env:

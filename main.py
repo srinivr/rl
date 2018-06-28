@@ -27,9 +27,9 @@ def make_env(env_id, seed):
 
 
 cuda = False
-# experiment = 'PushNStepSyncDQN'
+experiment = 'PushNStepSyncDQN'
 experiment = 'CartPoleDQN'
-# experiment = 'CartPoleNStepSynchronousDQN'
+experiment = 'CartPoleNStepSynchronousDQN'
 
 if cuda:
     device = 'cuda'

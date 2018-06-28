@@ -26,6 +26,7 @@ class BaseAgent:
         self.target_synchronize_steps = target_synchronize_steps  # global steps across processes
         # self.parameter_update_steps = parameter_update_steps
         self.grad_clamp = grad_clamp
+        self.td_losses = []
         self.auxiliary_losses = auxiliary_losses
 
         self.model_learner.to(self.device)
@@ -112,12 +113,15 @@ class BaseAgent:
             return
         self.model_learner.train()
         self.optimizer.zero_grad()
-        outputs = self.model_learner(states)
-        q_outputs = outputs.q_values.gather(1, actions.view(-1, 1))
-        loss = self.criterion(q_outputs, targets.view(-1, 1))
+        model_outputs = self.model_learner(states)
+        q_outputs = model_outputs.q_values.gather(1, actions.view(-1, 1))  # TODO remove
+        loss2 = self.criterion(q_outputs, targets[0].view(-1, 1))  # TODO remove
+        loss = torch.tensor(0.)
+        for idx in range(len(self.td_losses)):
+            loss = loss + self.td_losses[idx].get_loss(model_outputs, actions, targets[idx])
         if self.auxiliary_losses:
             for l in self.auxiliary_losses:
-                loss += l.get_loss(outputs, actions, rewards, batch_done)
+                loss += l.get_loss(model_outputs, actions, rewards, batch_done)
         loss.backward()
         if self.grad_clamp:
             for p in self.model_learner.parameters():
@@ -130,7 +134,7 @@ class BaseAgent:
         if self.epsilon_scheduler_use_steps:
             self.epsilon_scheduler.step()
 
-    def _get_batch(self, batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, future_target=None):
+    def _get_batch(self, batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, future_targets=None):
         """
         Construct pytorch batch tensors for _step_updates.
         :param batch_actions: 1D
@@ -141,15 +145,28 @@ class BaseAgent:
         states = torch.tensor(batch_states, **float_args)
         actions = torch.tensor(batch_actions, device=self.device, dtype=torch.long)
         rewards = torch.tensor(batch_rewards, **float_args)
-        targets = torch.zeros(len(actions), device=self.device)
-        if future_target is not None:
-            targets[non_final_mask] += self.gamma * future_target[non_final_mask]
-        elif not all(batch_done):
+        targets = [torch.zeros(len(actions), *td_loss.get_shape(), device=self.device) for td_loss in self.td_losses]
+        # TODO [HIGH] both n-step and 1-step target for different losses;
+        # None in list is not supported (yet) in a list containing pytorch tensors
+        is_none = future_targets is None
+        if not is_none:
+            for ft in future_targets:
+                is_none = is_none or ft is None
+        #if (future_targets is None or None in future_targets) and not all(batch_done):
+        if is_none and not all(batch_done):
             _next_non_final_states = torch.tensor(batch_next_states, **float_args)[non_final_mask]
             self.model_target.eval()
-            targets[non_final_mask] += self.gamma * self.model_target(_next_non_final_states).q_values.max(1)[0]\
-                .detach()  # max along a dim returns 1D
-        targets += rewards
+            model_outputs = self.model_target(_next_non_final_states)
+        for idx in range(len(self.td_losses)):
+            td_loss = self.td_losses[idx]
+            # future_target = future_targets[idx]
+            target = targets[idx]
+            if future_targets is not None and future_targets[idx] is not None:
+                target[non_final_mask] += self.gamma * future_targets[idx][non_final_mask]
+            elif not all(batch_done):
+                temp = target[non_final_mask]
+                target[non_final_mask] += self.gamma * td_loss.get_bootstrap_values(model_outputs)
+            target += td_loss.get_immediate_values(states, actions, rewards)
         return states, actions, rewards, targets, batch_done
 
     # TODO when doing linear decay

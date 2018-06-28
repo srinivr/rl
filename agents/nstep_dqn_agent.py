@@ -1,11 +1,11 @@
 import itertools
-import math
 from collections import namedtuple
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from agents.base_agent import BaseAgent
+from td_losses.q_loss import QLoss
 from utils.scheduler.decay_scheduler import DecayScheduler
 
 
@@ -14,7 +14,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
     https://arxiv.org/pdf/1710.11417.pdf (batched, up-to) n-step
     """
 
-    def __init__(self, experiment_id, model_class, model_params, rng, device='cpu', max_steps=10000000,
+    def __init__(self, experiment_id, model_class, model_params, rng, device='cpu', max_steps=1000000000,
                  training_evaluation_frequency=10000,
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=DecayScheduler(decay=0.999995), target_synchronize_steps=1e4,
@@ -29,6 +29,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
         super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency, optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, True, target_synchronize_steps,
                          parameter_update_steps, grad_clamp, auxiliary_losses)
+        self.td_losses.append(QLoss())
 
     def learn(self, envs, eval_env=None, n_eval_steps=100):
         """
@@ -61,16 +62,17 @@ class NStepSynchronousDQNAgent(BaseAgent):
         """
         construct n_step targets using super()._get_batch()
         """
-        states, actions, rewards, targets = [], [], [], []
+        states, actions, rewards, targets = [], [], [], []  # targets: list of list containing tensors
         _targets = None
         for i in range(1, self.n_step + 1):
             _states, _actions, _rewards, _targets, _ = super()._get_batch(batch_states[-i], batch_actions[-i],
                                                                        batch_next_states[-i], batch_rewards[-i],
-                                                                       batch_done[-i], future_target=_targets)
+                                                                       batch_done[-i], future_targets=_targets)
             states.insert(0, _states), actions.insert(0, _actions), rewards.insert(0, _rewards), targets.insert(0,
                                                                                                                 _targets)
         batch_dones = list(itertools.chain(*batch_done))
-        return torch.cat(states), torch.cat(actions), torch.cat(rewards),  torch.cat(targets), batch_dones
+        targets = zip(*targets)  # pay attention at this line
+        return torch.cat(states), torch.cat(actions), torch.cat(rewards), [torch.cat(t) for t in targets], batch_dones
 
     def _get_sample_action(self, envs):
         return [envs.action_space.sample() for _ in range(self.n_processes)]

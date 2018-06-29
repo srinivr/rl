@@ -116,7 +116,7 @@ class BaseAgent:
         model_outputs = self.model_learner(states)
         q_outputs = model_outputs.q_values.gather(1, actions.view(-1, 1))  # TODO remove
         loss2 = self.criterion(q_outputs, targets[0].view(-1, 1))  # TODO remove
-        loss = torch.tensor(0.)
+        loss = torch.tensor(0., device=self.device)
         for idx in range(len(self.td_losses)):
             loss = loss + self.td_losses[idx].get_loss(model_outputs, actions, targets[idx])
         if self.auxiliary_losses:

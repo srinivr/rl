@@ -1,6 +1,6 @@
 import itertools
 from collections import namedtuple
-
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -40,9 +40,13 @@ class NStepSynchronousDQNAgent(BaseAgent):
             print('no evaluation environment specified. No results will be printed!!')
         batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, = [], [], [], [], []
         step_states = envs.reset()
+        episode_rewards = np.zeros(self.n_processes)  # Training evaluation
         while self.elapsed_env_steps < self.max_steps:
-            step_actions, step_next_states, step_rewards, step_done, step_info = self._get_epsilon_greedy_action(envs,
-                                                                                                                 step_states)
+            step_actions, step_next_states, step_rewards, step_done, step_info = self._get_epsilon_greedy_action_and_step(envs,
+                                                                                                                          step_states)
+            if self.log:
+                self._training_eval(episode_rewards, step_rewards, step_done)
+
             for b, s in zip([batch_states, batch_actions, batch_next_states, batch_rewards, batch_done],
                             [step_states, step_actions, step_next_states, step_rewards, step_done]):
                 b.append(s)
@@ -77,8 +81,16 @@ class NStepSynchronousDQNAgent(BaseAgent):
     def _get_sample_action(self, envs):
         return [envs.action_space.sample() for _ in range(self.n_processes)]
 
-    def _get_action_from_model(self, model, state, action_type='list'):
-        return super()._get_action_from_model(model, state, action_type)
+    def _get_greedy_action(self, model, state, action_type='list'):
+        return super()._get_greedy_action(model, state, action_type)
 
     def _get_n_steps(self):
         return self.n_processes
+
+    def _training_eval(self, episode_rewards, step_rewards, step_done):
+        episode_rewards += step_rewards
+        np_done = np.array(step_done)
+        if np.sum(np_done) != 0:
+            self.writer.add_scalar('data/train_rewards', np.sum(episode_rewards[np_done]) / np.sum(step_done),
+                                   self.elapsed_env_steps)
+            episode_rewards[np_done] = 0.

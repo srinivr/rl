@@ -90,7 +90,7 @@ class WrongNStepSynchronousDQNAgent(BaseAgent):
         states = []
         actions = []
         while not done and step_ctr < self.n_step:
-            action, o_, reward, done, info = self._get_epsilon_greedy_action(env, o, env_idx)
+            action, o_, reward, done, info = self._get_epsilon_greedy_action_and_step(env, o, env_idx)
             step_ctr += 1
             self.elapsed_env_step[env_idx] += 1  # won't have any effect TODO remove
             states.append(o)

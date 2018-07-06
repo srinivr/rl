@@ -11,7 +11,7 @@ class BaseAgent:
     def __init__(self, experiment_id, model_class, model_params, rng, device='cpu', training_evaluation_frequency=100,
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True,
-                 target_synchronize_steps=1e4, parameter_update_steps=1, grad_clamp=None, auxiliary_losses=None):
+                 target_synchronize_steps=1e4, parameter_update_steps=1, grad_clamp=None, auxiliary_losses=None, log=True):
 
         self.model_class = model_class
         self.rng = rng
@@ -36,7 +36,9 @@ class BaseAgent:
         self.elapsed_model_steps = 0
         self.elapsed_env_steps = 0
         self.elapsed_episodes = 0
-        self.writer = SummaryWriter(comment=experiment_id)
+        self.log = log
+        if self.log:
+            self.writer = SummaryWriter(comment=experiment_id)
 
     def learn(self, env, eval_env=None, n_eval_episodes=100):
         raise NotImplementedError
@@ -47,7 +49,11 @@ class BaseAgent:
     def _get_n_steps(self):
         raise NotImplementedError
 
-    def _get_action_from_model(self, model, state, action_type):
+    def _get_epsilon(self, *args):
+        return self.epsilon_scheduler.get_epsilon(self.elapsed_model_steps) if self.epsilon_scheduler_use_steps \
+            else self.epsilon_scheduler.get_epsilon(self.elapsed_episodes)
+
+    def _get_greedy_action(self, model, state, action_type):
         """
         :param: action_type: 'scalar' or 'list'
         :return: action from model, model outputs
@@ -61,16 +67,16 @@ class BaseAgent:
         actions = model_out.q_values.max(1)[1].detach().to('cpu').numpy()
         return actions if action_type == 'list' else actions[0]  # , model_out
 
-    def _get_epsilon(self, *args):
-        return self.epsilon_scheduler.get_epsilon(self.elapsed_model_steps) if self.epsilon_scheduler_use_steps \
-            else self.epsilon_scheduler.get_epsilon(self.elapsed_episodes)
-
     def _get_epsilon_greedy_action(self, env, states):
         if np.random.random() < self._get_epsilon():
             action = self._get_sample_action(env)
         else:
             self.model_learner.eval()
-            action = self._get_action_from_model(self.model_learner, states)
+            action = self._get_greedy_action(self.model_learner, states)
+        return action
+
+    def _get_epsilon_greedy_action_and_step(self, env, states):
+        action = self._get_epsilon_greedy_action(env, states)
         o_, reward, done, info = env.step(action)
         self.elapsed_env_steps += self._get_n_steps()
         return action, o_, reward, done, info
@@ -88,13 +94,16 @@ class BaseAgent:
             ret = 0
             while not done:
                 len += 1
-                action = self._get_action_from_model(self.model_target, o, action_type)
+                # print('action from model:', self._get_greedy_action(self.model_target, o, action_type))
+                action = self._get_greedy_action(self.model_target, o, action_type)
+                #  print('action from sample:', action)
                 o, rew, done, info = env.step(action)
                 ret += rew
             returns.append(ret)
         print('mean eval return:', np.mean(returns), '..avg episode length:', len/n_episodes)
         print()
-        self.writer.add_scalar('data/eval_loss', np.mean(returns), self.elapsed_env_steps)
+        if self.log:
+            self.writer.add_scalar('data/eval_loss', np.mean(returns), self.elapsed_env_steps)
 
     def _episode_updates(self):
         self.elapsed_episodes += 1

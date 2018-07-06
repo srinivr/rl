@@ -1,7 +1,8 @@
 from models.treeqn.treeqn_model import TreeQNModel
 from collections import namedtuple
+import numpy as np
 import torch.nn as nn
-
+from utils.initializer import nn_init
 
 # TODO3 model grounding
 
@@ -16,11 +17,11 @@ class PushModel(TreeQNModel):
         super().__init__(n_actions, depth, state_embedding, reward_embedding, gamma, lambd, reward_grounding,
                          model_grounding)  # TODO what's under the hood of PyTorch of nn.Module
         self.encoding_convolution = nn.Sequential(
-            nn.Conv2d(self.n_input_channels, 24, kernel_size=3, stride=1),  # TODO make these as params?
+            nn_init(nn.Conv2d(self.n_input_channels, 24, kernel_size=3, stride=1), w_scale=1.0),  # TODO make these as params?
             nn.ReLU(),
-            nn.Conv2d(24, 24, kernel_size=3, stride=1),
+            nn_init(nn.Conv2d(24, 24, kernel_size=3, stride=1), w_scale=1.0),
             nn.ReLU(),
-            nn.Conv2d(24, 48, kernel_size=4, stride=1),
+            nn_init(nn.Conv2d(24, 48, kernel_size=4, stride=1), w_scale=1.0),
             nn.ReLU(),
         )
 

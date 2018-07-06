@@ -1,9 +1,9 @@
 from collections import namedtuple
-
+from utils.initializer import nn_init, xav_init
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import numpy as np
 from models.base_model import BaseModel
 
 
@@ -27,7 +27,7 @@ class TreeQNModel(BaseModel):
         super().__init__(tuple_attributes)
 
         self.encoding_fc = nn.Sequential(
-            nn.Linear(self.convolution_dim_out, 128),
+            nn_init(nn.Linear(self.convolution_dim_out, self.state_embedding), w_scale=np.sqrt(2)),
             nn.ReLU()
         )
         self.action_independent_transition = nn.Sequential(
@@ -38,17 +38,17 @@ class TreeQNModel(BaseModel):
         self.action_transition = nn.ModuleList()
         for _ in range(self.n_actions):
             self.action_transition.append(nn.Sequential(
-                nn.Linear(self.state_embedding, self.state_embedding, bias=False),
+                xav_init(nn.Linear(self.state_embedding, self.state_embedding, bias=False)),
                 # turn off bias for action dependent transition
                 nn.Tanh()
             ))
         self.reward_fn = nn.Sequential(
-            nn.Linear(self.state_embedding, 64),
+            nn_init(nn.Linear(self.state_embedding, 64), w_scale=np.sqrt(2)),
             nn.ReLU(),
-            nn.Linear(64, self.n_actions)
+            nn_init(nn.Linear(64, self.n_actions), w_scale=0.01)
         )
         self.value_fn = nn.Sequential(
-            nn.Linear(self.state_embedding, 1)
+            nn_init(nn.Linear(self.state_embedding, 1), w_scale=0.01)
         )
 
     def forward(self, x):

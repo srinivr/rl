@@ -1,5 +1,5 @@
 class LinearScheduler:
-    def __init__(self, initial_epsilon=1., lower_bound=0.05, decay_steps=5e5, do_decay=True):
+    def __init__(self, initial_epsilon=1., lower_bound=0.05, decay_steps=5e4, do_decay=True):
         self.epsilon = initial_epsilon
         self.lower_bound = lower_bound
         self.decay = (initial_epsilon - lower_bound) / decay_steps

@@ -49,7 +49,7 @@ class BaseAgent:
     def _get_n_steps(self):
         raise NotImplementedError
 
-    def _get_epsilon(self, *args):
+    def _get_epsilon(self, *args):  # TODO require arguments?
         return self.epsilon_scheduler.get_epsilon(self.elapsed_model_steps) if self.epsilon_scheduler_use_steps \
             else self.epsilon_scheduler.get_epsilon(self.elapsed_episodes)
 
@@ -123,8 +123,6 @@ class BaseAgent:
         self.model_learner.train()
         self.optimizer.zero_grad()
         model_outputs = self.model_learner(states)
-        q_outputs = model_outputs.q_values.gather(1, actions.view(-1, 1))  # TODO remove
-        loss2 = self.criterion(q_outputs, targets[0].view(-1, 1))  # TODO remove
         loss = torch.tensor(0., device=self.device)
         for idx in range(len(self.td_losses)):
             loss = loss + self.td_losses[idx].get_loss(model_outputs, actions, targets[idx])
@@ -142,6 +140,8 @@ class BaseAgent:
             print('agents synchronized...at model step:', self.elapsed_model_steps, '.. env step:', self.elapsed_env_steps)
         if self.epsilon_scheduler_use_steps:
             self.epsilon_scheduler.step()
+        if self.log:
+            self._log_values()
 
     def _get_batch(self, batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, future_targets=None):
         """
@@ -181,3 +181,7 @@ class BaseAgent:
     # TODO when doing linear decay
     #       epsilon decayed after every environment step (after buffer is adequately filled in DQN) but model step is
     #       used in scheduler.get_epsilon(). Is this consistent/clear?
+
+    def _log_values(self):
+        self.writer.add_scalar('data/epsilon', self.epsilon_scheduler.get_epsilon(), self.elapsed_env_steps)
+        # self.writer.add_scalar('data/lr', self.optimizer.l)  # TODO

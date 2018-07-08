@@ -26,10 +26,11 @@ def make_env(env_id, seed):
     return _f
 
 
-cuda = False
+cuda = True
+#experiment = 'PushDQN'
 experiment = 'PushNStepSyncDQN'
-experiment = 'CartPoleDQN'
-experiment = 'CartPoleNStepSynchronousDQN'
+#experiment = 'CartPoleDQN'
+#experiment = 'CartPoleNStepSynchronousDQN'
 
 if cuda:
     device = 'cuda'
@@ -65,10 +66,11 @@ elif experiment == 'PushNStepSyncDQN':
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
     agent = NStepSynchronousDQNAgent(experiment, PushModel, [5, 4, 2], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
-                                     grad_clamp=[-1, 1], training_evaluation_frequency=2500, criterion=nn.MSELoss,
+                                     grad_clamp=[-1, 1], training_evaluation_frequency=40000, criterion=nn.MSELoss,
                                      epsilon_scheduler=LinearScheduler(), auxiliary_losses=[TreeNStepRewardLoss(2, 5,
                                                                                                                 nproc)])
     agent.learn(envs, env)
+    #agent._eval(env)
 
 elif experiment == 'PushDQN':
     env_name = 'CartPole-v0'

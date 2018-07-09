@@ -1,12 +1,13 @@
 import itertools
-from collections import namedtuple
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+
+from collections import namedtuple
 from agents.base_agent import BaseAgent
 from td_losses.q_loss import QLoss
-from utils.scheduler.decay_scheduler import DecayScheduler
+from utils.scheduler.linear_scheduler import LinearScheduler
 
 
 class NStepSynchronousDQNAgent(BaseAgent):
@@ -17,7 +18,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
     def __init__(self, experiment_id, model_class, model_params, rng, device='cpu', max_steps=1000000000,
                  training_evaluation_frequency=10000,
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
-                 gamma=0.99, epsilon_scheduler=DecayScheduler(decay=0.999995), target_synchronize_steps=1e4,
+                 gamma=0.99, epsilon_scheduler=LinearScheduler(decay_steps=5e4), target_synchronize_steps=1e4,
                  parameter_update_steps=1, grad_clamp=None, n_step=5, n_processes=1, auxiliary_losses=None):
 
         self.max_steps = max_steps

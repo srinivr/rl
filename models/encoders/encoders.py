@@ -6,7 +6,7 @@ from utils.initializer import nn_init
 class Encoder:
 
     @staticmethod
-    def get_push_encoder(n_input_channels):
+    def get_push_encoder(n_input_channels=3):
         encoder = nn.Sequential(
             nn_init(nn.Conv2d(n_input_channels, 24, kernel_size=3, stride=1), w_scale=1.0),
             # TODO make these as params?

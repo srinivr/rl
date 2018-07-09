@@ -1,6 +1,8 @@
+import torch.nn as nn
+import numpy as np
+
 from models.encoders.encoders import Encoder
 from models.treeqn.base_treeqn_model import TreeQNModel
-import torch.nn as nn
 from utils.initializer import nn_init
 
 # TODO model grounding
@@ -16,10 +18,14 @@ class PushModel(TreeQNModel):
         super().__init__(n_actions, depth, state_embedding, reward_embedding, gamma, lambd, reward_grounding,
                          model_grounding)  # TODO what's under the hood of PyTorch of nn.Module
         self.encoding_convolution = Encoder.get_push_encoder(self.n_input_channels)
+        self.encoding_fc = nn.Sequential(
+            nn_init(nn.Linear(self.convolution_dim_out, self.state_embedding), w_scale=np.sqrt(2)),
+            nn.ReLU()
+        )
 
     def _get_encoding(self, x):
         x = self.encoding_convolution(x)
-        x = x.view(x.size(0), -1)
+        x = x.view(x.size(0), -1)  # batch size x (c x h x w)
         return self.encoding_fc(x)
 
     @staticmethod

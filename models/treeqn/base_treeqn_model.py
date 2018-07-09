@@ -1,9 +1,10 @@
-from collections import namedtuple
-from utils.initializer import nn_init, xav_init
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+
+from collections import namedtuple
+from utils.initializer import nn_init, xav_init
 from models.base_model import BaseModel
 
 
@@ -26,10 +27,6 @@ class TreeQNModel(BaseModel):
             tuple_attributes.append('model_prediction')
         super().__init__(tuple_attributes)
 
-        self.encoding_fc = nn.Sequential(
-            nn_init(nn.Linear(self.convolution_dim_out, self.state_embedding), w_scale=np.sqrt(2)),
-            nn.ReLU()
-        )
         self.action_independent_transition = nn.Sequential(
             nn.Linear(self.state_embedding, self.state_embedding),
             nn.Tanh()
@@ -55,9 +52,11 @@ class TreeQNModel(BaseModel):
         x = self._get_encoding(x)
         x = x / x.norm(dim=1, keepdim=True)  # normalize embedding
         q_values, rewards = self._q_a(x, 0)
+        _param_dict = {'q_values': q_values}
         if self.reward_grounding:
-            return self.output_tuple(q_values, rewards)
-        return self.output_tuple(q_values)
+            _param_dict['rewards'] = rewards
+        # TODO model grounding -> careful with x
+        return self.output_tuple(**_param_dict)
 
     def _q_a(self, s, depth):
         """

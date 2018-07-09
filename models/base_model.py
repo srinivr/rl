@@ -3,10 +3,11 @@ import torch.nn as nn
 
 
 class BaseModel(nn.Module):
-    def __init__(self, tuple_attributes=None):
+    def __init__(self, tuple_attributes=None, q_values=True):  # TODO q base model
         if tuple_attributes is None:
             tuple_attributes = []
-        tuple_attributes.insert(0, 'q_values')
+        if q_values:
+            tuple_attributes.insert(0, 'q_values')
         self.output_tuple = namedtuple('Outputs', ' '.join(tuple_attributes))
         super().__init__()
 

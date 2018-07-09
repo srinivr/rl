@@ -26,7 +26,7 @@ def make_env(env_id, seed):
     return _f
 
 
-cuda = True
+cuda = False
 #experiment = 'PushDQN'
 experiment = 'PushNStepSyncDQN'
 #experiment = 'CartPoleDQN'

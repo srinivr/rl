@@ -1,14 +1,21 @@
 import torch
 
+from agents.iterative_agents.iterative_agent import IterativeAgent
 from agents.nstep_dqn_agent import NStepSynchronousDQNAgent
 from auxiliary_losses.tree_nstep_reward_loss import TreeNStepRewardLoss
+from envs.wrappers.pytorch_image_wrapper import PyTorchImageWrapper
 from models.classic_control.simple_cartpole_model import SimpleCartPoleModel
 import gym
 import envs.treeqn.push
 #from envs.atari.atari_wrapper import wrap_deepmind
 from agents.dqn_agent import DQNAgent
-from models.treeqn.push_model import PushModel
+from models.iterative.feature_models.push_model import PushModel
+from models.iterative.value_models.q_model import QModel
+from models.treeqn.push_dqn_model import PushDQNModel
+from models.treeqn.push_tree_model import PushTreeModel
 from auxiliary_losses.tree_reward_loss import TreeRewardLoss
+from td_losses.model_loss import ModelLoss
+from td_losses.q_loss import QLoss
 from utils.scheduler.linear_scheduler import LinearScheduler
 from utils.scheduler.decay_scheduler import DecayScheduler
 from utils.vec_env.subproc_vec_env import SubprocVecEnv
@@ -18,6 +25,7 @@ import torch.nn as nn
 def make_env(env_id, seed):
     def _f():
         env = gym.make(env_id)
+        # env = PyTorchImageWrapper(env)
         #env = wrap_deepmind(env)
         # print('max_steps:', env._max_episode_steps)
         env.seed(seed)
@@ -26,11 +34,12 @@ def make_env(env_id, seed):
     return _f
 
 
-cuda = False
+cuda = True
 #experiment = 'PushDQN'
-experiment = 'PushNStepSyncDQN'
+#experiment = 'PushNStepSyncDQN'
 #experiment = 'CartPoleDQN'
 #experiment = 'CartPoleNStepSynchronousDQN'
+experiment = 'PushIterativeDQN'
 
 if cuda:
     device = 'cuda'
@@ -41,7 +50,7 @@ if experiment == 'CartPoleDQN':
     env = gym.make('CartPole-v0')
     agent = DQNAgent(experiment, SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=100000, device=device,
                      epsilon_scheduler_use_steps=True, target_synchronize_steps=10000, grad_clamp=[-1, 1],
-                     training_evaluation_frequency=100)
+                     training_evaluation_frequency=100, td_losses=[QLoss()])
     agent.learn(env, env)
 
 elif experiment == 'CartPoleNStepSynchronousDQN':
@@ -52,35 +61,68 @@ elif experiment == 'CartPoleNStepSynchronousDQN':
 
     envs = SubprocVecEnv(envs)  # target_sync = 10e4 * n_proc
     agent = NStepSynchronousDQNAgent(experiment, SimpleCartPoleModel, [4, 2], None, n_processes=nproc, device=device,
-                                     target_synchronize_steps=10000, grad_clamp=[-1, 1], training_evaluation_frequency=10000)
+                                     target_synchronize_steps=10000, grad_clamp=[-1, 1], td_losses=[QLoss()],
+                                     training_evaluation_frequency=10000)
     agent.learn(envs, env)
 
 elif experiment == 'PushNStepSyncDQN':
     env_name = 'Push-v0'
     env = gym.make(env_name)
+    #env = PyTorchImageWrapper(env)
     nproc = 16
     envs = [make_env(env_name, seed) for seed in range(nproc)]
 
     envs = SubprocVecEnv(envs)
     # params
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
-    agent = NStepSynchronousDQNAgent(experiment, PushModel, [5, 4, 2], None, n_processes=nproc, device=device,
+    agent = NStepSynchronousDQNAgent(experiment, PushTreeModel, [5, 4, 2], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
                                      grad_clamp=[-1, 1], training_evaluation_frequency=40000, criterion=nn.MSELoss,
-                                     epsilon_scheduler=LinearScheduler(), auxiliary_losses=[TreeNStepRewardLoss(2, 5,
-                                                                                                                nproc)])
+                                     epsilon_scheduler=LinearScheduler(decay_steps=5e4), td_losses=[QLoss()],
+                                     auxiliary_losses=[TreeNStepRewardLoss(2, 5, nproc)])
     agent.learn(envs, env)
     #agent._eval(env)
 
 elif experiment == 'PushDQN':
-    env_name = 'CartPole-v0'
+    env_name = 'Push-v0'
+    env = gym.make(env_name)
+
+    #env = PyTorchImageWrapper(env)
+    optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
+    # agent = DQNAgent(experiment, PushDQNModel, [5, 4], None, device=device, optimizer_parameters=optimizer_parameters,
+    #                  target_synchronize_steps=40000, grad_clamp=[-1, 1], training_evaluation_frequency=2500,
+    #                  epsilon_scheduler=LinearScheduler(decay_steps=4e6), epsilon_scheduler_use_steps=True,
+    #                  criterion=nn.MSELoss)
+
+    nproc = 16
+    envs = [make_env(env_name, seed) for seed in range(nproc)]
+
+    envs = SubprocVecEnv(envs)
+    agent = NStepSynchronousDQNAgent(experiment, PushDQNModel, [5, 4], None, n_processes=nproc, device=device,
+                                     optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
+                                     grad_clamp=[-1, 1], training_evaluation_frequency=40000, criterion=nn.MSELoss,
+                                     epsilon_scheduler=LinearScheduler(decay_steps=5e4), td_losses=[QLoss()])
+    agent.learn(envs, env)
+
+elif experiment == 'PushIterativeDQN':
+    env_name = 'Push-v0'
     env = gym.make(env_name)
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
-    agent = DQNAgent(experiment, PushModel, [5, 4, 2], None, device=device, optimizer_parameters=optimizer_parameters,
-                     target_synchronize_steps=40000, grad_clamp=[-1, 1], training_evaluation_frequency=2500,
-                     epsilon_scheduler=LinearScheduler(), epsilon_scheduler_use_steps=True, criterion=nn.MSELoss
-                     )
-    agent.learn(envs, env)
+    nproc = 16
+    envs = [make_env(env_name, seed) for seed in range(nproc)]
+    envs = SubprocVecEnv(envs)
+    feature_agent = NStepSynchronousDQNAgent(experiment+'_feature', PushModel, [5, 4], None, n_processes=nproc,
+                                             device=device, optimizer_parameters=optimizer_parameters,
+                                             target_synchronize_steps=10000,  grad_clamp=[-1, 1], td_losses=[ModelLoss()],
+                                             training_evaluation_frequency=10000, criterion=nn.MSELoss,
+                                             epsilon_scheduler=LinearScheduler(decay_steps=25e3))
+    q_agent = NStepSynchronousDQNAgent(experiment+'_value', QModel, [512, 512, 4], None, n_processes=nproc,
+                                       device=device, optimizer_parameters=optimizer_parameters,
+                                       target_synchronize_steps=10000, grad_clamp=[-1, 1],
+                                       training_evaluation_frequency=10000, criterion=nn.MSELoss, td_losses=[QLoss()],
+                                       epsilon_scheduler=LinearScheduler(decay_steps=25e3))
+    agent = IterativeAgent(feature_agent, q_agent)
+    agent.learn(envs, envs, env, env)
 
 elif experiment == 'SeaquestNStepSyncDQN':
     env_name = 'SeaquestNoFrameskip-v4'
@@ -91,7 +133,7 @@ elif experiment == 'SeaquestNStepSyncDQN':
     envs = SubprocVecEnv(envs)
     # params
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
-    agent = NStepSynchronousDQNAgent(experiment, PushModel, [5, 4, 2], None, n_processes=nproc, device=device,
+    agent = NStepSynchronousDQNAgent(experiment, PushTreeModel, [5, 4, 2], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
                                      grad_clamp=[-1, 1], training_evaluation_frequency=2500, criterion=nn.MSELoss,
                                      epsilon_scheduler=LinearScheduler())
@@ -102,7 +144,7 @@ elif experiment == 'debug':
     envs = [make_env(env_name, seed) for seed in range(nproc)]
 
     envs = SubprocVecEnv(envs)
-    model = PushModel(5, 4)
+    model = PushTreeModel(5, 4)
     for param in model.parameters():
         param.data = param.data - param.data + 1.
         pass

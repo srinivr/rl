@@ -6,7 +6,7 @@ from utils.initializer import nn_init
 class Decoder:
 
     @staticmethod
-    def get_push_decoder(n_input_channels=1):
+    def get_push_decoder(n_input_channels=48):
         decoder = nn.Sequential(
             nn_init(nn.ConvTranspose2d(n_input_channels, 48, 4)),
             nn.ReLU(),

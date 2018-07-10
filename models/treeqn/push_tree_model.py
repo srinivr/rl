@@ -8,7 +8,7 @@ from utils.initializer import nn_init
 # TODO model grounding
 
 
-class PushModel(TreeQNModel):
+class PushTreeModel(TreeQNModel):
 
     def __init__(self, n_input_channels, n_actions, depth=2, state_embedding=128, reward_embedding=64, gamma=0.99,
                  lambd=0.8, reward_grounding=True, model_grounding=False):

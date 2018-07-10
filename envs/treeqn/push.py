@@ -85,7 +85,7 @@ class Push(gym.Env):
         self.boxes_left = self.n_boxes
         self.edge_boxes = 0
 
-        return self._get_pytorch_state(self.state)
+        return self._transform(self.state)
 
     def step(self, action):
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
@@ -172,7 +172,7 @@ class Push(gym.Env):
 
         self.pos = pos
 
-        return self._get_pytorch_state(self.state), reward, done, {}
+        return self._transform(self.state), reward, done, {}
 
     def is_in_grid(self, point):
         return (0 <= point[0] < self.w) and (0 <= point[1] < self.w)
@@ -202,9 +202,9 @@ class Push(gym.Env):
     def get_action_meanings(self):
         return ["down", "left", "up", "right"]
 
-    def _get_pytorch_state(self, s):
-        s = s.transpose((2, 0, 1))
-        return s
+    @staticmethod
+    def _transform(state):
+        return state.transpose((2, 0, 1))
 
 
 if __name__ == "__main__":

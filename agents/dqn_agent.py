@@ -16,8 +16,9 @@ class DQNAgent(BaseAgent):
                  training_evaluation_frequency=100, optimizer=optim.RMSprop, optimizer_parameters=
                  {'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss, gamma=0.99, epsilon_scheduler=
                  DecayScheduler(), epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4,
-                 parameter_update_steps=1, grad_clamp=None, mb_size=32, replay_buffer_size=100000,
-                 replay_buffer_min_experience=None, auxiliary_losses=None):
+                 td_losses=None, grad_clamp=None, mb_size=32, replay_buffer_size=100000,
+                 replay_buffer_min_experience=None, auxiliary_losses=None, input_transforms=[], output_transforms=[],
+                 log=True):
 
         self.n_episodes = n_episodes
         self.mb_size = mb_size
@@ -32,17 +33,22 @@ class DQNAgent(BaseAgent):
         self.transitions = namedtuple('Transition', 'state action reward next_state done')
         super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency, optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
-                         target_synchronize_steps, parameter_update_steps, grad_clamp, auxiliary_losses)
-        self.td_losses.append(QLoss())
+                         target_synchronize_steps, td_losses, grad_clamp, auxiliary_losses, input_transforms,
+                         output_transforms, log)
 
-    def learn(self, env, eval_env=None, n_eval_episodes=100):
+    def learn(self, env, eval_env=None, n_learn_iterations=None, n_eval_episodes=100):
         if not eval_env:
-        #     eval_env = env
             print('no evaluation environment specified. evaluation will not be performed..')
+        if n_learn_iterations is None:
+            n_learn_iterations = self.n_episodes
+        assert 1 <= n_learn_iterations <= self.n_episodes
         returns = []
-        # self.epsilon_scheduler.set_no_decay()  # do not decay until replay buffer is adequately filled
-        for ep in range(self.n_episodes):
+        ephemeral_episode_count = 0
+        while ephemeral_episode_count < n_learn_iterations:
+            ephemeral_episode_count += 1
             o = env.reset()
+            for input_transform in self.input_transforms:
+                o = input_transform.transform(o)
             done = False
             ret = 0
             while not done:
@@ -59,10 +65,11 @@ class DQNAgent(BaseAgent):
             returns.append(ret)
             if self.log:
                 self._training_eval(ret)
-            if (ep+1) % self.training_evaluation_frequency == 0:
-                print('mean training return', self.training_evaluation_frequency, ' returns:', ep, ':', np.mean(returns))
+            if self.elapsed_episodes % self.training_evaluation_frequency == 0:
+                print('mean training return', self.training_evaluation_frequency, ' returns:', self.elapsed_episodes
+                      , ':', np.mean(returns))
                 if eval_env:
-                    print('ep:', ep, end=' ')
+                    print('ep:', self.elapsed_episodes, end=' ')
                     self._eval(eval_env, n_eval_episodes)
                 returns = []
 

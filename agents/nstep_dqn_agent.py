@@ -19,7 +19,8 @@ class NStepSynchronousDQNAgent(BaseAgent):
                  training_evaluation_frequency=10000,
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=LinearScheduler(decay_steps=5e4), target_synchronize_steps=1e4,
-                 parameter_update_steps=1, grad_clamp=None, n_step=5, n_processes=1, auxiliary_losses=None):
+                 td_losses=None, grad_clamp=None, n_step=5, n_processes=1, auxiliary_losses=None, input_transforms=None,
+                 output_transforms=None, log=True):
 
         self.max_steps = max_steps
         self.n_step = n_step
@@ -29,20 +30,30 @@ class NStepSynchronousDQNAgent(BaseAgent):
         self.batch_values = namedtuple('Values', 'done step_ctr rewards states actions targets')
         super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency, optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, True, target_synchronize_steps,
-                         parameter_update_steps, grad_clamp, auxiliary_losses)
-        self.td_losses.append(QLoss())
+                         td_losses, grad_clamp, auxiliary_losses, input_transforms, output_transforms, log)
 
-    def learn(self, envs, eval_env=None, n_eval_steps=100):
+    def learn(self, envs, eval_env=None, n_learn_iterations=None, n_eval_steps=100, step_states=None):
         """
         env and eval_env should be different! (since we are using SubProcvecEnv and _eval calls env.reset())
         """
         # assert eval_env is not None
         if not eval_env:
             print('no evaluation environment specified. No results will be printed!!')
+        if n_learn_iterations is None:
+            n_learn_iterations = self.max_steps
+        assert self.n_step * self.n_processes <= n_learn_iterations <= self.max_steps  # steps to do at least 1 batch
+        n_learn_iterations = n_learn_iterations // (self.n_processes * self.n_step)  # to keep counting simple  # TODO ensure mod == 0
+        ephemeral_step_count = 0
+
         batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, = [], [], [], [], []
-        step_states = envs.reset()
+
+        if step_states is None:  # if not None => restarting from given state
+            step_states = envs.reset()
+            step_states = self._apply_input_transform(step_states)
+
         episode_rewards = np.zeros(self.n_processes)  # Training evaluation
-        while self.elapsed_env_steps < self.max_steps:
+        while ephemeral_step_count < n_learn_iterations:
+            ephemeral_step_count += 1
             step_actions, step_next_states, step_rewards, step_done, step_info = self._get_epsilon_greedy_action_and_step(envs,
                                                                                                                           step_states)
             if self.log:
@@ -52,6 +63,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
                             [step_states, step_actions, step_next_states, step_rewards, step_done]):
                 b.append(s)
             if self.elapsed_env_steps % self.n_step == 0:
+            #if ephemeral_step_count % self.n_step == 0:  # TODO Mismatch in n step -> n_learn not multiple of batch_size
                 states, actions, rewards, targets, batch_done = self.__get_batch(batch_states, batch_actions,
                                                                                         batch_next_states,
                                                                                         batch_rewards,  batch_done)  # batched n-step targets
@@ -62,6 +74,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
             if eval_env and self.elapsed_env_steps % self.training_evaluation_frequency == 0:
                 print('step:', self.elapsed_env_steps, end=' ')
                 self._eval(eval_env, n_eval_steps)
+        return step_states
 
     def __get_batch(self, batch_states, batch_actions, batch_next_states, batch_rewards, batch_done):
         """

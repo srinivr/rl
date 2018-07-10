@@ -6,12 +6,15 @@ import torch
 from tensorboardX import SummaryWriter
 
 
+# TODO learn episodes/steps inconsistent in dqn and n-step dqn
+
 class BaseAgent:
 
     def __init__(self, experiment_id, model_class, model_params, rng, device='cpu', training_evaluation_frequency=100,
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True,
-                 target_synchronize_steps=1e4, parameter_update_steps=1, grad_clamp=None, auxiliary_losses=None, log=True):
+                 target_synchronize_steps=1e4, td_losses=None, grad_clamp=None, auxiliary_losses=None,
+                 input_transforms=None, output_transforms=None, log=True):
 
         self.model_class = model_class
         self.rng = rng
@@ -24,10 +27,13 @@ class BaseAgent:
         self.model_learner = self.model_class(*model_params)
         self.model_target = self.model_class(*model_params)
         self.target_synchronize_steps = target_synchronize_steps  # global steps across processes
-        # self.parameter_update_steps = parameter_update_steps
+        self.td_losses = td_losses
         self.grad_clamp = grad_clamp
-        self.td_losses = []
         self.auxiliary_losses = auxiliary_losses
+        self.input_transforms = [] if input_transforms is None else input_transforms
+        self.output_transforms = [] if output_transforms is None else output_transforms
+                                                    # transform the outputs of the model to derive q_values
+                                                    # interface: transform(model_output)
 
         self.model_learner.to(self.device)
         self.model_target.to(self.device)
@@ -40,7 +46,7 @@ class BaseAgent:
         if self.log:
             self.writer = SummaryWriter(comment=experiment_id)
 
-    def learn(self, env, eval_env=None, n_eval_episodes=100):
+    def learn(self, env, eval_env=None, n_learn_iterations=None, n_eval_episodes=100):
         raise NotImplementedError
 
     def _get_sample_action(self, env):
@@ -49,22 +55,55 @@ class BaseAgent:
     def _get_n_steps(self):
         raise NotImplementedError
 
+    def add_input_transform(self, input_transform):
+        self.input_transforms.append(input_transform)
+
+    def add_output_transform(self, output_transform):
+        self.output_transforms.append(output_transform)
+
+    def get_target_model(self):  # return immutable? if immutable ensure that callers have latest copy.
+        return self.model_target
+
+    def evaluate(self, model, state):
+        """
+        forward pass in evaluation mode
+        """
+        model.eval()
+        model_in = torch.tensor(state, device=self.device, dtype=torch.float)
+        if isinstance(state, torch.Tensor):
+            dim = state.dim()
+        else:
+            dim = state.ndim
+        for _ in range(
+                self.model_class.get_input_dimension() + 1 - dim):  # create a 2D tensor if input is 0D or 1D
+            model_in = model_in.unsqueeze(0)
+
+        model_out = model(model_in)
+        return model_out
+
+    def _apply_input_transform(self, states):
+        for input_transform in self.input_transforms:
+            states = input_transform.transform(states)
+        return states
+
+    def _apply_output_transform(self, states):
+        for output_transform in self.output_transforms:
+            states = output_transform.transform(states)
+        return states
+
     def _get_epsilon(self, *args):  # TODO require arguments?
         return self.epsilon_scheduler.get_epsilon(self.elapsed_model_steps) if self.epsilon_scheduler_use_steps \
             else self.epsilon_scheduler.get_epsilon(self.elapsed_episodes)
 
-    def _get_greedy_action(self, model, state, action_type):
+    def _get_greedy_action(self, model, state, action_type):  # model.eval() within the function
         """
         :param: action_type: 'scalar' or 'list'
         :return: action from model, model outputs
         """
         assert action_type == 'list' or action_type == 'scalar'
-        model.eval()
-        model_in = torch.tensor(state, device=self.device, dtype=torch.float)
-        for _ in range(self.model_class.get_input_dimension() + 1 - state.ndim):  # create a 2D tensor if input is 0D or 1D
-            model_in = model_in.unsqueeze(0)
-        model_out = model(model_in)
-        actions = model_out.q_values.max(1)[1].detach().to('cpu').numpy()
+        model_output = self.evaluate(model, state)
+        model_output = self._apply_output_transform(model_output)
+        actions = model_output.q_values.max(1)[1].detach().to('cpu').numpy()
         return actions if action_type == 'list' else actions[0]  # , model_out
 
     def _get_epsilon_greedy_action(self, env, states):
@@ -75,10 +114,11 @@ class BaseAgent:
             action = self._get_greedy_action(self.model_learner, states)
         return action
 
-    def _get_epsilon_greedy_action_and_step(self, env, states):
+    def _get_epsilon_greedy_action_and_step(self, env, states):  # states must be input-transformed
         action = self._get_epsilon_greedy_action(env, states)
         o_, reward, done, info = env.step(action)
         self.elapsed_env_steps += self._get_n_steps()
+        o_ = self._apply_input_transform(o_)
         return action, o_, reward, done, info
 
     def _eval(self, env, n_episodes=100, action_type='scalar'):
@@ -94,9 +134,8 @@ class BaseAgent:
             ret = 0
             while not done:
                 len += 1
-                # print('action from model:', self._get_greedy_action(self.model_target, o, action_type))
+                o = self._apply_input_transform(o)
                 action = self._get_greedy_action(self.model_target, o, action_type)
-                #  print('action from sample:', action)
                 o, rew, done, info = env.step(action)
                 ret += rew
             returns.append(ret)
@@ -115,6 +154,7 @@ class BaseAgent:
         Given a pytorch batch, update learner model, increment number of model updates
         (and possibly synchronize target model)
 
+        :param states: transformed input states
         :param batch_done: list
         """
         if states.size()[0] < 2:  # TODO do this only when batchnorm is used?
@@ -123,6 +163,7 @@ class BaseAgent:
         self.model_learner.train()
         self.optimizer.zero_grad()
         model_outputs = self.model_learner(states)
+        assert len(self.td_losses) + len(self.auxiliary_losses) != 0  # to train model at least one loss fn is required
         loss = torch.tensor(0., device=self.device)
         for idx in range(len(self.td_losses)):
             loss = loss + self.td_losses[idx].get_loss(model_outputs, actions, targets[idx])
@@ -161,7 +202,6 @@ class BaseAgent:
         if not is_none:
             for ft in future_targets:
                 is_none = is_none or ft is None
-        #if (future_targets is None or None in future_targets) and not all(batch_done):
         if is_none and not all(batch_done):
             _next_non_final_states = torch.tensor(batch_next_states, **float_args)[non_final_mask]
             self.model_target.eval()
@@ -173,7 +213,6 @@ class BaseAgent:
             if future_targets is not None and future_targets[idx] is not None:
                 target[non_final_mask] += self.gamma * future_targets[idx][non_final_mask]
             elif not all(batch_done):
-                temp = target[non_final_mask]
                 target[non_final_mask] += self.gamma * td_loss.get_bootstrap_values(model_outputs)
             target += td_loss.get_immediate_values(states, actions, rewards)
         return states, actions, rewards, targets, batch_done

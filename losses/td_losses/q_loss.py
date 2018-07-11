@@ -20,3 +20,6 @@ class QLoss(BaseLoss):
     def get_shape(self):
         return [1]
 
+    def get_name(self):
+        return 'q_loss'
+

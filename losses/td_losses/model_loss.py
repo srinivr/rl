@@ -21,3 +21,6 @@ class ModelLoss(BaseLoss):
     def get_shape(self):
         return [5, 8, 8]
 
+    def get_name(self):
+        return 'model_td_loss'
+

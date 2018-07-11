@@ -21,3 +21,6 @@ class BaseLoss:
         :return: list of dimensions
         """
         raise NotImplementedError
+
+    def get_name(self):
+        raise NotImplementedError

@@ -9,3 +9,6 @@ class RewardLoss(AuxiliaryLoss):
 
     def get_loss(self, model_outputs, actions, rewards, dones):
         return self.criterion(model_outputs.rewards, rewards.view(-1, 1))
+
+    def get_name(self):
+        return 'reward_auxiliary_loss'

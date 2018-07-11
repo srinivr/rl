@@ -34,4 +34,7 @@ class TreeNStepRewardLoss(AuxiliaryLoss):
         targets = torch.stack(targets, dim=0)
         return self.criterion(outputs, targets)
 
+    def get_name(self):
+        return 'tree_n_step_loss'
+
 

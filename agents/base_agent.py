@@ -61,6 +61,9 @@ class BaseAgent:
     def add_output_transform(self, output_transform):
         self.output_transforms.append(output_transform)
 
+    def get_learner_model(self):
+        return self.model_learner
+
     def get_target_model(self):  # return immutable? if immutable ensure that callers have latest copy.
         return self.model_target
 
@@ -142,7 +145,7 @@ class BaseAgent:
         print('mean eval return:', np.mean(returns), '..avg episode length:', len/n_episodes)
         print()
         if self.log:
-            self.writer.add_scalar('data/eval_loss', np.mean(returns), self.elapsed_env_steps)
+            self.writer.add_scalar('data/eval_rewards', np.mean(returns), self.elapsed_env_steps)
 
     def _episode_updates(self):
         self.elapsed_episodes += 1
@@ -166,10 +169,15 @@ class BaseAgent:
         assert len(self.td_losses) + len(self.auxiliary_losses) != 0  # to train model at least one loss fn is required
         loss = torch.tensor(0., device=self.device)
         for idx in range(len(self.td_losses)):
-            loss = loss + self.td_losses[idx].get_loss(model_outputs, actions, targets[idx])
+            _loss = self.td_losses[idx].get_loss(model_outputs, actions, targets[idx])
+            loss = loss + _loss
+            self.writer.add_scalar('data/td_loss/'+self.td_losses[idx].get_name(), _loss, self.elapsed_env_steps)
         if self.auxiliary_losses:
             for l in self.auxiliary_losses:
-                loss += l.get_loss(model_outputs, actions, rewards, batch_done)
+                _loss = l.get_loss(model_outputs, actions, rewards, batch_done)
+                loss += _loss
+                self.writer.add_scalar('data/auxiliary_loss/'+l.get_name(), _loss, self.elapsed_env_steps)
+        self.writer.add_scalar('data/cumulative_loss', loss, self.elapsed_env_steps)
         loss.backward()
         if self.grad_clamp:
             for p in self.model_learner.parameters():
@@ -178,7 +186,7 @@ class BaseAgent:
         self.elapsed_model_steps += 1
         if self.elapsed_model_steps % self.target_synchronize_steps == 0:
             self.model_target.load_state_dict(self.model_learner.state_dict())
-            print('agents synchronized...at model step:', self.elapsed_model_steps, '.. env step:', self.elapsed_env_steps)
+            print('agents synchronized... model step:', self.elapsed_model_steps, '. env step:', self.elapsed_env_steps)
         if self.epsilon_scheduler_use_steps:
             self.epsilon_scheduler.step()
         if self.log:

@@ -8,3 +8,6 @@ class AuxiliaryLoss:
         inputs must by pytorch tensors
         """
         raise NotImplementedError
+
+    def get_name(self):
+        raise NotImplementedError

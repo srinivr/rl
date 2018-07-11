@@ -1,4 +1,4 @@
-from losses.auxiliary_losses import AuxiliaryLoss
+from losses.auxiliary_losses.auxiliary_loss import AuxiliaryLoss
 import torch.nn as nn
 
 
@@ -13,3 +13,7 @@ class TreeRewardLoss(AuxiliaryLoss):
         """
         model_rewards = model_outputs.rewards
         return self.criterion(model_rewards.rewards.gather(1, actions.view(-1, 1)), rewards.view(-1, 1))
+
+    def get_name(self):
+        return 'tree_reward_loss'
+

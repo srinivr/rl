@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 from models.base_model import BaseModel
-from models.encoders.encoders import Encoder
+from models.common.encoders.encoders import Encoder
 
 
 class PushDQNModel(BaseModel):

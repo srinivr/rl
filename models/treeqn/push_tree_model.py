@@ -1,7 +1,7 @@
 import torch.nn as nn
 import numpy as np
 
-from models.encoders.encoders import Encoder
+from models.common.encoders.encoders import Encoder
 from models.treeqn.base_treeqn_model import TreeQNModel
 from utils.initializer import nn_init
 

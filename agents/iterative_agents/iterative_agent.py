@@ -15,6 +15,6 @@ class IterativeAgent:
             self.q_agent.add_input_transform(StateToFeatureTransform(self.feature_agent))
             step_states = None  # TODO how to work with DQN?
             for _ in range(self.n_iters):
-                self.feature_agent.learn(feature_env, feature_eval_env, self.n_feature_iters,
-                                                       n_eval_episodes, step_states)
+                self.feature_agent.learn(feature_env, feature_eval_env, self.n_feature_iters, n_eval_episodes,
+                                         step_states)
                 self.q_agent.learn(q_env, q_eval_env, self.n_q_iters, n_eval_episodes, step_states)

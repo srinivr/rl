@@ -6,7 +6,6 @@ import torch.optim as optim
 
 from collections import namedtuple
 from agents.base_agent import BaseAgent
-from td_losses.q_loss import QLoss
 from utils.scheduler.linear_scheduler import LinearScheduler
 
 

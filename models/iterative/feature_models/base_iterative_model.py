@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 from models.base_model import BaseModel
-from models.decoders.decoders import Decoder
+from models.common.decoders.decoders import Decoder
 
 
 class BaseIterativeModel(BaseModel):
@@ -28,7 +28,7 @@ class BaseIterativeModel(BaseModel):
                 nn.ReLU(),
                 nn.Linear(self.reward_embedding, self.reward_embedding),
                 nn.ReLU(),
-                nn.Linear(self.reward_embedding, self.n_actions)
+                nn.Linear(self.reward_embedding, 1)
             )
         # reconstruction layer
         if self.model_grounding:

@@ -1,9 +1,7 @@
-import torch
 import torch.nn as nn
 import torch.optim as optim
 
 from agents.base_agent import BaseAgent
-from td_losses.q_loss import QLoss
 from utils.replay_buffer import ReplayBuffer
 from utils.scheduler.decay_scheduler import DecayScheduler
 from collections import namedtuple

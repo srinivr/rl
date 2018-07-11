@@ -2,22 +2,18 @@ import torch
 
 from agents.iterative_agents.iterative_agent import IterativeAgent
 from agents.nstep_dqn_agent import NStepSynchronousDQNAgent
-from auxiliary_losses.tree_nstep_reward_loss import TreeNStepRewardLoss
-from envs.wrappers.pytorch_image_wrapper import PyTorchImageWrapper
+from losses.auxiliary_losses.reward_loss import RewardLoss
+from losses.auxiliary_losses.tree_nstep_reward_loss import TreeNStepRewardLoss
 from models.classic_control.simple_cartpole_model import SimpleCartPoleModel
 import gym
-import envs.treeqn.push
 #from envs.atari.atari_wrapper import wrap_deepmind
 from agents.dqn_agent import DQNAgent
 from models.iterative.feature_models.push_model import PushModel
 from models.iterative.value_models.q_model import QModel
 from models.treeqn.push_dqn_model import PushDQNModel
 from models.treeqn.push_tree_model import PushTreeModel
-from auxiliary_losses.tree_reward_loss import TreeRewardLoss
-from td_losses.model_loss import ModelLoss
-from td_losses.q_loss import QLoss
+from losses.td_losses.q_loss import QLoss
 from utils.scheduler.linear_scheduler import LinearScheduler
-from utils.scheduler.decay_scheduler import DecayScheduler
 from utils.vec_env.subproc_vec_env import SubprocVecEnv
 import torch.nn as nn
 
@@ -113,14 +109,15 @@ elif experiment == 'PushIterativeDQN':
     envs = SubprocVecEnv(envs)
     feature_agent = NStepSynchronousDQNAgent(experiment+'_feature', PushModel, [5, 4], None, n_processes=nproc,
                                              device=device, optimizer_parameters=optimizer_parameters,
-                                             target_synchronize_steps=10000,  grad_clamp=[-1, 1], td_losses=[ModelLoss()],
+                                             target_synchronize_steps=40000,  grad_clamp=[-1, 1], td_losses=None,
+                                             auxiliary_losses=[RewardLoss()],
                                              training_evaluation_frequency=10000, criterion=nn.MSELoss,
-                                             epsilon_scheduler=LinearScheduler(decay_steps=25e3))
+                                             epsilon_scheduler=LinearScheduler(decay_steps=5e4))
     q_agent = NStepSynchronousDQNAgent(experiment+'_value', QModel, [512, 512, 4], None, n_processes=nproc,
                                        device=device, optimizer_parameters=optimizer_parameters,
-                                       target_synchronize_steps=10000, grad_clamp=[-1, 1],
+                                       target_synchronize_steps=40000, grad_clamp=[-1, 1],
                                        training_evaluation_frequency=10000, criterion=nn.MSELoss, td_losses=[QLoss()],
-                                       epsilon_scheduler=LinearScheduler(decay_steps=25e3))
+                                       epsilon_scheduler=LinearScheduler(decay_steps=5e4))
     agent = IterativeAgent(feature_agent, q_agent)
     agent.learn(envs, envs, env, env)
 

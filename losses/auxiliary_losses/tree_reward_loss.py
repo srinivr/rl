@@ -1,11 +1,11 @@
-from auxiliary_losses.auxiliary_loss import AuxiliaryLoss
+from losses.auxiliary_losses import AuxiliaryLoss
 import torch.nn as nn
 
 
 class TreeRewardLoss(AuxiliaryLoss):
 
-    def __init__(self, loss_criterion=nn.MSELoss()):
-        super().__init__(loss_criterion)
+    def __init__(self, criterion=nn.MSELoss):
+        super().__init__(criterion)
 
     def get_loss(self, model_outputs, actions, rewards, dones=None):
         """

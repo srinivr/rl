@@ -1,13 +1,13 @@
 import torch.nn as nn
 
-from models.encoders.encoders import Encoder
+from models.common.encoders.encoders import Encoder
 from models.iterative.feature_models.base_iterative_model import BaseIterativeModel
 
 
 class PushModel(BaseIterativeModel):
 
-    def __init__(self, n_input_channels, n_actions, state_embedding=512, reward_embedding=64, reward_grounding=False,
-                 model_grounding=True):
+    def __init__(self, n_input_channels, n_actions, state_embedding=512, reward_embedding=64, reward_grounding=True,
+                 model_grounding=False):
 
         super().__init__(n_input_channels, n_actions, state_embedding, reward_embedding, reward_grounding,
                          model_grounding)

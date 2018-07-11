@@ -1,16 +1,16 @@
 import torch
 import torch.nn as nn
-from auxiliary_losses.auxiliary_loss import AuxiliaryLoss
+
+from losses.auxiliary_losses.auxiliary_loss import AuxiliaryLoss
 
 
 class TreeNStepRewardLoss(AuxiliaryLoss):
 
-    def __init__(self, depth, n_step, n_proc, loss_criterion=nn.MSELoss()):
-        super().__init__(loss_criterion)
+    def __init__(self, depth, n_step, n_proc, criterion=nn.MSELoss):
+        super().__init__(criterion)
         self.depth = depth
         self.n_step = n_step
         self.n_proc = n_proc
-        self.criterion = loss_criterion
 
     def get_loss(self, model_outputs, actions, rewards, batch_done):
         # Assumption: model_outputs are of stack such at 1..n_proc corresponds to t=1, next n_proc to t=2 and so on

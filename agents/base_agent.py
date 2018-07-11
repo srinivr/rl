@@ -27,9 +27,9 @@ class BaseAgent:
         self.model_learner = self.model_class(*model_params)
         self.model_target = self.model_class(*model_params)
         self.target_synchronize_steps = target_synchronize_steps  # global steps across processes
-        self.td_losses = td_losses
+        self.td_losses = [] if td_losses is None else td_losses
         self.grad_clamp = grad_clamp
-        self.auxiliary_losses = auxiliary_losses
+        self.auxiliary_losses = [] if auxiliary_losses is None else auxiliary_losses
         self.input_transforms = [] if input_transforms is None else input_transforms
         self.output_transforms = [] if output_transforms is None else output_transforms
                                                     # transform the outputs of the model to derive q_values

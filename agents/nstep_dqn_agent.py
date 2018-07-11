@@ -41,7 +41,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
         if n_learn_iterations is None:
             n_learn_iterations = self.max_steps
         assert self.n_step * self.n_processes <= n_learn_iterations <= self.max_steps  # steps to do at least 1 batch
-        n_learn_iterations = n_learn_iterations // (self.n_processes * self.n_step)  # to keep counting simple  # TODO ensure mod == 0
+        n_learn_iterations = n_learn_iterations // self.n_processes  # to keep counting simple  # TODO ensure mod == 0
         ephemeral_step_count = 0
 
         batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, = [], [], [], [], []

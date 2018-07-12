@@ -7,7 +7,7 @@ from models.common.decoders.decoders import Decoder
 class BaseIterativeModel(BaseModel):
 
     def __init__(self, n_input_channels, n_actions, state_embedding=128, reward_embedding=64, reward_grounding=True,
-                 model_grounding=True):
+                 model_grounding=True, normalize_embeddings=True):
         self.n_input_channels = n_input_channels
         self.n_actions = n_actions
         self.convolution_dim_out = 48  # TODO automate this!
@@ -15,6 +15,7 @@ class BaseIterativeModel(BaseModel):
         self.reward_embedding = reward_embedding
         self.reward_grounding = reward_grounding
         self.model_grounding = model_grounding
+        self.normalize_embeddings = normalize_embeddings
         tuple_attributes = ['features']
         if self.reward_grounding:
             tuple_attributes.append('rewards')
@@ -42,6 +43,8 @@ class BaseIterativeModel(BaseModel):
 
     def forward(self, x):
         x = self._get_encoding(x)
+        if self.normalize_embeddings:
+            x = x/x.norm(dim=1, keepdim=True)
         _param_dict = {'features': x}
         if self.reward_grounding:
             _param_dict['rewards'] = self.reward_fn(x)

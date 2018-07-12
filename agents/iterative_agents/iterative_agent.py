@@ -3,7 +3,7 @@ from utils.transforms.output_transforms.features_to_q_transform import FeaturesT
 
 
 class IterativeAgent:
-    def __init__(self, feature_agent, q_agent, n_iters=int(1e6), n_feature_iters=1600, n_q_iters=1600):
+    def __init__(self, feature_agent, q_agent, n_iters=int(1e6), n_feature_iters=20000, n_q_iters=20000):
         self.feature_agent = feature_agent
         self.q_agent = q_agent
         self.n_iters = n_iters

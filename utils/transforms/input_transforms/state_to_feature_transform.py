@@ -7,4 +7,4 @@ class StateToFeatureTransform(BaseTransform):
         self.feature_agent = feature_agent
 
     def transform(self, inputs):
-        return self.feature_agent.evaluate(self.feature_agent.get_target_model(), inputs).features
+        return self.feature_agent.evaluate(self.feature_agent.get_learner_model(), inputs).features

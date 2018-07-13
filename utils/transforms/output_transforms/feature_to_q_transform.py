@@ -1,7 +1,7 @@
 from utils.transforms.output_transforms.base_output_transform import BaseOutputTransform
 
 
-class FeaturesToQTransform(BaseOutputTransform):
+class FeatureToQTransform(BaseOutputTransform):
 
     def __init__(self, q_agent):
         self.q_agent = q_agent

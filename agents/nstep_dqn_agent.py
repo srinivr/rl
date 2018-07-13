@@ -25,13 +25,15 @@ class NStepSynchronousDQNAgent(BaseAgent):
         self.n_step = n_step
         self.n_processes = n_processes
         target_synchronize_steps = max(1, int(target_synchronize_steps // (
-                    self.n_step * self.n_processes)))  # model is updated every t_s_s environment steps
+                self.n_step * self.n_processes)))  # model is updated every t_s_s environment steps
         self.batch_values = namedtuple('Values', 'done step_ctr rewards states actions targets')
-        super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency, optimizer,
+        super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency,
+                         optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, True, target_synchronize_steps,
                          td_losses, grad_clamp, auxiliary_losses, input_transforms, output_transforms, log)
 
-    def learn(self, envs, eval_env=None, n_learn_iterations=None, n_eval_steps=100, step_states=None):
+    def learn(self, envs, eval_env=None, n_learn_iterations=None, n_eval_steps=100, step_states=None,
+              episode_rewards=None, episode_lengths=None):
         """
         env and eval_env should be different! (since we are using SubProcvecEnv and _eval calls env.reset())
         """
@@ -49,23 +51,25 @@ class NStepSynchronousDQNAgent(BaseAgent):
         if step_states is None:  # if not None => restarting from given state
             step_states = envs.reset()
             step_states = self._apply_input_transform(step_states)
+            episode_rewards, episode_lengths = np.zeros(self.n_processes), np.zeros(self.n_processes)  # training eval
 
-        episode_rewards = np.zeros(self.n_processes)  # Training evaluation
         while ephemeral_step_count < n_learn_iterations:
             ephemeral_step_count += 1
-            step_actions, step_next_states, step_rewards, step_done, step_info = self._get_epsilon_greedy_action_and_step(envs,
-                                                                                                                          step_states)
+            step_actions, step_next_states, step_rewards, step_done, step_info = self._get_epsilon_greedy_action_and_step(
+                envs,
+                step_states)
             if self.log:
-                self._training_eval(episode_rewards, step_rewards, step_done)
+                self._training_log(episode_rewards, episode_lengths, step_rewards, step_done)
 
             for b, s in zip([batch_states, batch_actions, batch_next_states, batch_rewards, batch_done],
                             [step_states, step_actions, step_next_states, step_rewards, step_done]):
                 b.append(s)
             if self.elapsed_env_steps % self.n_step == 0:
-            #if ephemeral_step_count % self.n_step == 0:  # TODO Mismatch in n step -> n_learn not multiple of batch_size
+                # if ephemeral_step_count % self.n_step == 0:  # TODO Mismatch in n step -> n_learn not multiple of batch_size
                 states, actions, rewards, targets, batch_done = self.__get_batch(batch_states, batch_actions,
-                                                                                        batch_next_states,
-                                                                                        batch_rewards,  batch_done)  # batched n-step targets
+                                                                                 batch_next_states,
+                                                                                 batch_rewards,
+                                                                                 batch_done)  # batched n-step targets
                 #  notice above batch_done has been from list of lists to a list
                 self._step_updates(states, actions, rewards, targets, batch_done)
                 batch_states, batch_actions, batch_next_states, batch_rewards, batch_done = [], [], [], [], []
@@ -73,7 +77,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
             if eval_env and self.elapsed_env_steps % self.training_evaluation_frequency == 0:
                 print('step:', self.elapsed_env_steps, end=' ')
                 self._eval(eval_env, n_eval_steps)
-        return step_states
+        return step_states, episode_rewards, episode_lengths
 
     def __get_batch(self, batch_states, batch_actions, batch_next_states, batch_rewards, batch_done):
         """
@@ -83,8 +87,8 @@ class NStepSynchronousDQNAgent(BaseAgent):
         _targets = None
         for i in range(1, self.n_step + 1):
             _states, _actions, _rewards, _targets, _ = super()._get_batch(batch_states[-i], batch_actions[-i],
-                                                                       batch_next_states[-i], batch_rewards[-i],
-                                                                       batch_done[-i], future_targets=_targets)
+                                                                          batch_next_states[-i], batch_rewards[-i],
+                                                                          batch_done[-i], future_targets=_targets)
             states.insert(0, _states), actions.insert(0, _actions), rewards.insert(0, _rewards), targets.insert(0,
                                                                                                                 _targets)
         batch_dones = list(itertools.chain(*batch_done))
@@ -100,10 +104,14 @@ class NStepSynchronousDQNAgent(BaseAgent):
     def _get_n_steps(self):
         return self.n_processes
 
-    def _training_eval(self, episode_rewards, step_rewards, step_done):
+    def _training_log(self, episode_rewards, episode_lengths, step_rewards, step_done):
         episode_rewards += step_rewards
+        episode_lengths += 1
         np_done = np.array(step_done)
         if np.sum(np_done) != 0:
             self.writer.add_scalar('data/train_rewards', np.sum(episode_rewards[np_done]) / np.sum(step_done),
                                    self.elapsed_env_steps)
+            self.writer.add_scalar('data/train_episode_length', np.sum(episode_lengths[np_done]) / np.sum(step_done),
+                                   self.elapsed_env_steps)
             episode_rewards[np_done] = 0.
+            episode_lengths[np_done] = 0.

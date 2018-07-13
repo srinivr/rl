@@ -48,10 +48,11 @@ class DQNAgent(BaseAgent):
             for input_transform in self.input_transforms:
                 o = input_transform.transform(o)
             done = False
-            ret = 0
+            ret, length = 0., 0.
             while not done:
                 action, o_, reward, done, info = self._get_epsilon_greedy_action_and_step(env, o)
                 ret += reward
+                length += 1
                 self.replay_buffer.insert(self.transitions(o, action, reward, o_, done))
                 if self._is_gather_experience():
                     continue
@@ -60,9 +61,9 @@ class DQNAgent(BaseAgent):
                 self._step_updates(states, actions, rewards, targets, batch_done)
                 o = o_
             self._episode_updates()
-            returns.append(ret)
             if self.log:
-                self._training_eval(ret)
+                self._training_log(ret, length)
+            returns.append(ret)
             if self.elapsed_episodes % self.training_evaluation_frequency == 0:
                 print('mean training return', self.training_evaluation_frequency, ' returns:', self.elapsed_episodes
                       , ':', np.mean(returns))
@@ -93,6 +94,7 @@ class DQNAgent(BaseAgent):
     def _get_n_steps(self):
         return 1
 
-    def _training_eval(self, ret):
+    def _training_log(self, ret, length):
         self.writer.add_scalar('data/train_rewards', ret, self.elapsed_env_steps)
+        self.writer.add_scalar('data/train_episode_length', length, self.elapsed_env_steps)
 

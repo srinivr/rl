@@ -1,11 +1,13 @@
+import gym
+import envs.treeqn.push
 import torch
+import torch.nn as nn
 
 from agents.iterative_agents.iterative_agent import IterativeAgent
 from agents.nstep_dqn_agent import NStepSynchronousDQNAgent
 from losses.auxiliary_losses.reward_loss import RewardLoss
 from losses.auxiliary_losses.tree_nstep_reward_loss import TreeNStepRewardLoss
 from models.classic_control.simple_cartpole_model import SimpleCartPoleModel
-import gym
 #from envs.atari.atari_wrapper import wrap_deepmind
 from agents.dqn_agent import DQNAgent
 from models.iterative.feature_models.push_model import PushModel
@@ -15,7 +17,6 @@ from models.treeqn.push_tree_model import PushTreeModel
 from losses.td_losses.q_loss import QLoss
 from utils.scheduler.linear_scheduler import LinearScheduler
 from utils.vec_env.subproc_vec_env import SubprocVecEnv
-import torch.nn as nn
 
 
 def make_env(env_id, seed):
@@ -101,6 +102,7 @@ elif experiment == 'PushDQN':
     agent.learn(envs, env)
 
 elif experiment == 'PushIterativeDQN':
+    experiment += '_both_target'
     env_name = 'Push-v0'
     env = gym.make(env_name)
     optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}

@@ -89,10 +89,10 @@ class BaseAgent:
             states = input_transform.transform(states)
         return states
 
-    def _apply_output_transform(self, states):
+    def _apply_output_transform(self, states, model_outputs):
         for output_transform in self.output_transforms:
-            states = output_transform.transform(states)
-        return states
+            model_outputs = output_transform.transform(states, model_outputs)
+        return model_outputs
 
     def _get_epsilon(self, *args):  # TODO require arguments?
         return self.epsilon_scheduler.get_epsilon(self.elapsed_model_steps) if self.epsilon_scheduler_use_steps \
@@ -105,7 +105,7 @@ class BaseAgent:
         """
         assert action_type == 'list' or action_type == 'scalar'
         model_output = self.evaluate(model, state)
-        model_output = self._apply_output_transform(model_output)
+        model_output = self._apply_output_transform(state, model_output)
         actions = model_output.q_values.max(1)[1].detach().to('cpu').numpy()
         return actions if action_type == 'list' else actions[0]  # , model_out
 
@@ -130,22 +130,23 @@ class BaseAgent:
         """
         returns = []
         self.model_target.eval()
-        len = 0
+        length = 0.
         for ep in range(n_episodes):
             o = env.reset()
             done = False
             ret = 0
             while not done:
-                len += 1
+                length += 1
                 o = self._apply_input_transform(o)
                 action = self._get_greedy_action(self.model_target, o, action_type)
                 o, rew, done, info = env.step(action)
                 ret += rew
             returns.append(ret)
-        print('mean eval return:', np.mean(returns), '..avg episode length:', len/n_episodes)
+        print('mean eval return:', np.mean(returns), '..avg episode length:', length/n_episodes)
         print()
         if self.log:
             self.writer.add_scalar('data/eval_rewards', np.mean(returns), self.elapsed_env_steps)
+            self.writer.add_scalar('data/eval_episode_length', length/n_episodes, self.elapsed_env_steps)
 
     def _episode_updates(self):
         self.elapsed_episodes += 1

@@ -1,3 +1,5 @@
+import copy
+
 import torch.nn as nn
 import torch.optim as optim
 
@@ -29,10 +31,15 @@ class DQNAgent(BaseAgent):
                 self.replay_buffer_min_experience = self.mb_size
             self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
         self.transitions = namedtuple('Transition', 'state action reward next_state done')
-        super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency, optimizer,
+        super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency,
+                         optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
                          target_synchronize_steps, td_losses, grad_clamp, auxiliary_losses, input_transforms,
                          output_transforms, log)
+
+        self.checkpoint_value = float('inf')
+        self.original_epsilon_scheduler = copy.deepcopy(self.epsilon_scheduler)
+        self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
 
     def learn(self, env, eval_env=None, n_learn_iterations=None, n_eval_episodes=100):
         if not eval_env:
@@ -48,23 +55,31 @@ class DQNAgent(BaseAgent):
             for input_transform in self.input_transforms:
                 o = input_transform.transform(o)
             done = False
-            ret, length = 0., 0.
+            episode_return, episode_length = 0., 0.
+            self.epsilon_scheduler, update_epsilon_scheduler, epsilon_scheduler_index = self.epsilon_schedulers[
+                                                                                            0], True, 0
             while not done:
                 action, o_, reward, done, info = self._get_epsilon_greedy_action_and_step(env, o)
-                ret += reward
-                length += 1
+                episode_return += reward
+                episode_length += 1
                 self.replay_buffer.insert(self.transitions(o, action, reward, o_, done))
                 if self._is_gather_experience():
                     continue
-                # self.epsilon_scheduler.set_do_decay()  # decay since replay buffer is adequately filled
+                if update_epsilon_scheduler and episode_return >= self.checkpoint_value:
+                    update_epsilon_scheduler = False
+                    epsilon_scheduler_index += 1
+                    self.epsilon_scheduler = self.epsilon_schedulers[epsilon_scheduler_index]
                 states, actions, rewards, targets, batch_done = self.__get_batch()  # note: __ not _
                 self._step_updates(states, actions, rewards, targets, batch_done)
                 o = o_
             self._episode_updates()
             if self.log:
-                self._training_log(ret, length)
-            returns.append(ret)
+                self._training_log(episode_return, episode_length)
+            returns.append(episode_return)
             if self.elapsed_episodes % self.training_evaluation_frequency == 0:
+                if self.checkpoint_value == float('inf') or self.checkpoint_value < np.mean(returns):
+                    self.checkpoint_value = np.mean(returns)
+                    self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
                 print('mean training return', self.training_evaluation_frequency, ' returns:', self.elapsed_episodes
                       , ':', np.mean(returns))
                 if eval_env:
@@ -97,4 +112,3 @@ class DQNAgent(BaseAgent):
     def _training_log(self, ret, length):
         self.writer.add_scalar('data/train_rewards', ret, self.elapsed_env_steps)
         self.writer.add_scalar('data/train_episode_length', length, self.elapsed_env_steps)
-

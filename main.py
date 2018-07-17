@@ -33,10 +33,10 @@ def make_env(env_id, seed):
 
 cuda = True
 #experiment = 'PushDQN'
-#experiment = 'PushNStepSyncDQN'
+experiment = 'PushNStepSyncDQN'
 #experiment = 'CartPoleDQN'
 #experiment = 'CartPoleNStepSynchronousDQN'
-experiment = 'PushIterativeDQN'
+#experiment = 'PushIterativeDQN'
 
 if cuda:
     device = 'cuda'
@@ -46,7 +46,8 @@ else:
 if experiment == 'CartPoleDQN':
     env = gym.make('CartPole-v0')
     agent = DQNAgent(experiment, SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=100000, device=device,
-                     epsilon_scheduler_use_steps=True, target_synchronize_steps=10000, grad_clamp=[-1, 1],
+                     epsilon_scheduler_use_steps=True, epsilon_scheduler=LinearScheduler(decay_steps=int(15e3)),
+                     target_synchronize_steps=10000, grad_clamp=[-1, 1],
                      training_evaluation_frequency=100, td_losses=[QLoss()])
     agent.learn(env, env)
 
@@ -75,7 +76,7 @@ elif experiment == 'PushNStepSyncDQN':
     agent = NStepSynchronousDQNAgent(experiment, PushTreeModel, [5, 4, 2], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
                                      grad_clamp=[-1, 1], training_evaluation_frequency=40000, criterion=nn.MSELoss,
-                                     epsilon_scheduler=LinearScheduler(decay_steps=5e4), td_losses=[QLoss()],
+                                     epsilon_scheduler=LinearScheduler(decay_steps=2e6), td_losses=[QLoss()],
                                      auxiliary_losses=[TreeNStepRewardLoss(2, 5, nproc)])
     agent.learn(envs, env)
     #agent._eval(env)

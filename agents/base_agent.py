@@ -94,9 +94,9 @@ class BaseAgent:
             model_outputs = output_transform.transform(states, model_outputs)
         return model_outputs
 
-    def _get_epsilon(self, *args):  # TODO require arguments?
-        return self.epsilon_scheduler.get_epsilon(self.elapsed_model_steps) if self.epsilon_scheduler_use_steps \
-            else self.epsilon_scheduler.get_epsilon(self.elapsed_episodes)
+    def _get_epsilon(self, *args):
+        return self.epsilon_scheduler.get_epsilon() if self.epsilon_scheduler_use_steps else self.epsilon_scheduler\
+            .get_epsilon()
 
     def _get_greedy_action(self, model, state, action_type):  # model.eval() within the function
         """
@@ -109,7 +109,7 @@ class BaseAgent:
         actions = model_output.q_values.max(1)[1].detach().to('cpu').numpy()
         return actions if action_type == 'list' else actions[0]  # , model_out
 
-    def _get_epsilon_greedy_action(self, env, states):
+    def _get_epsilon_greedy_action(self, env, states, *args):
         if np.random.random() < self._get_epsilon():
             action = self._get_sample_action(env)
         else:
@@ -117,8 +117,8 @@ class BaseAgent:
             action = self._get_greedy_action(self.model_learner, states)
         return action
 
-    def _get_epsilon_greedy_action_and_step(self, env, states):  # states must be input-transformed
-        action = self._get_epsilon_greedy_action(env, states)
+    def _get_epsilon_greedy_action_and_step(self, env, states, *args):  # states must be input-transformed
+        action = self._get_epsilon_greedy_action(env, states, args)
         o_, reward, done, info = env.step(action)
         self.elapsed_env_steps += self._get_n_steps()
         o_ = self._apply_input_transform(o_)

@@ -33,7 +33,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, True, target_synchronize_steps,
                          td_losses, grad_clamp, auxiliary_losses, input_transforms, output_transforms, log)
 
-        self.checkpoint_value = float('inf')
+        self.checkpoint_values = [float('inf')]  # [-1] is always inf # threshold to cross to use next scheduler
         self.original_epsilon_scheduler = copy.deepcopy(self.epsilon_scheduler)
         self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
 
@@ -88,9 +88,9 @@ class NStepSynchronousDQNAgent(BaseAgent):
             if eval_env and self.elapsed_env_steps % self.training_evaluation_frequency == 0:
                 print('step:', self.elapsed_env_steps, end=' ')
                 self._eval(eval_env, n_eval_steps)
-                if self.checkpoint_value == float('inf') or self.checkpoint_value < np.mean(returns):
-                    self.checkpoint_value = np.mean(returns)
-                    self.writer.add_scalar('data/checkpoint', self.checkpoint_value, self.elapsed_env_steps)
+                if len(self.checkpoint_values) == 1 or np.mean(returns) > self.checkpoint_values[-2]:
+                    self.checkpoint_values.insert(-1, np.mean(returns))
+                    self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
                     self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
                 returns = []
 
@@ -125,11 +125,14 @@ class NStepSynchronousDQNAgent(BaseAgent):
     def _update_epsilon_scheduler(self, episode_returns, step_rewards, step_done, update_epsilon_scheduler,
                                   epsilon_scheduler_index):
         np_done = np.array(step_done)
-        idx = np.logical_and(episode_returns + step_rewards > self.checkpoint_value, update_epsilon_scheduler)
-        update_epsilon_scheduler[idx] = False
-        epsilon_scheduler_index[idx] += 1
+        _sum = episode_returns + step_rewards
+        for idx in range(self.n_processes):
+            if _sum[idx] > self.checkpoint_values[epsilon_scheduler_index[idx]]:
+                epsilon_scheduler_index[idx] += 1
 
-        update_epsilon_scheduler[np_done] = True
+        #epsilon_scheduler_index[idx] += 1
+
+        #update_epsilon_scheduler[np_done] = True
         epsilon_scheduler_index[np_done] = 0
 
     def _training_log(self, episode_returns, episode_lengths, step_rewards, step_done, returns):

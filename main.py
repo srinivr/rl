@@ -31,7 +31,7 @@ def make_env(env_id, seed):
     return _f
 
 
-cuda = True
+cuda = False
 #experiment = 'PushDQN'
 experiment = 'PushNStepSyncDQN'
 #experiment = 'CartPoleDQN'
@@ -76,7 +76,7 @@ elif experiment == 'PushNStepSyncDQN':
     agent = NStepSynchronousDQNAgent(experiment, PushTreeModel, [5, 4, 2], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
                                      grad_clamp=[-1, 1], training_evaluation_frequency=40000, criterion=nn.MSELoss,
-                                     epsilon_scheduler=LinearScheduler(decay_steps=2e6), td_losses=[QLoss()],
+                                     epsilon_scheduler=LinearScheduler(decay_steps=8e5), td_losses=[QLoss()],
                                      auxiliary_losses=[TreeNStepRewardLoss(2, 5, nproc)])
     agent.learn(envs, env)
     #agent._eval(env)

@@ -18,7 +18,7 @@ class DQNAgent(BaseAgent):
                  DecayScheduler(), epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4,
                  td_losses=None, grad_clamp=None, mb_size=32, replay_buffer_size=100000,
                  replay_buffer_min_experience=None, auxiliary_losses=None, input_transforms=[], output_transforms=[],
-                 log=True):
+                 log=True, checkpoint_epsilon=False):
 
         self.n_episodes = n_episodes
         self.mb_size = mb_size
@@ -31,15 +31,16 @@ class DQNAgent(BaseAgent):
                 self.replay_buffer_min_experience = self.mb_size
             self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
         self.transitions = namedtuple('Transition', 'state action reward next_state done')
+        self.checkpoint_epsilon = checkpoint_epsilon
+        if self.checkpoint_epsilon:
+            self.checkpoint_values = [float('inf')]  # [-1] is always infinity; threshold to use next scheduler
+            self.original_epsilon_scheduler = copy.deepcopy(self.epsilon_scheduler)
+            self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
         super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency,
                          optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
                          target_synchronize_steps, td_losses, grad_clamp, auxiliary_losses, input_transforms,
                          output_transforms, log)
-
-        self.checkpoint_value = float('inf')
-        self.original_epsilon_scheduler = copy.deepcopy(self.epsilon_scheduler)
-        self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
 
     def learn(self, env, eval_env=None, n_learn_iterations=None, n_eval_episodes=100):
         if not eval_env:
@@ -56,8 +57,8 @@ class DQNAgent(BaseAgent):
                 o = input_transform.transform(o)
             done = False
             episode_return, episode_length = 0., 0.
-            self.epsilon_scheduler, update_epsilon_scheduler, epsilon_scheduler_index = self.epsilon_schedulers[
-                                                                                            0], True, 0
+            if self.checkpoint_epsilon:
+                self.epsilon_scheduler, epsilon_scheduler_index = self.epsilon_schedulers[0], 0
             while not done:
                 action, o_, reward, done, info = self._get_epsilon_greedy_action_and_step(env, o)
                 episode_return += reward
@@ -65,10 +66,10 @@ class DQNAgent(BaseAgent):
                 self.replay_buffer.insert(self.transitions(o, action, reward, o_, done))
                 if self._is_gather_experience():
                     continue
-                if update_epsilon_scheduler and episode_return >= self.checkpoint_value:
-                    update_epsilon_scheduler = False
-                    epsilon_scheduler_index += 1
-                    self.epsilon_scheduler = self.epsilon_schedulers[epsilon_scheduler_index]
+                if self.checkpoint_epsilon:
+                    if episode_return > self.checkpoint_values[epsilon_scheduler_index]:
+                        epsilon_scheduler_index += 1
+                        self.epsilon_scheduler = self.epsilon_schedulers[epsilon_scheduler_index]
                 states, actions, rewards, targets, batch_done = self.__get_batch()  # note: __ not _
                 self._step_updates(states, actions, rewards, targets, batch_done)
                 o = o_
@@ -77,9 +78,11 @@ class DQNAgent(BaseAgent):
                 self._training_log(episode_return, episode_length)
             returns.append(episode_return)
             if self.elapsed_episodes % self.training_evaluation_frequency == 0:
-                if self.checkpoint_value == float('inf') or self.checkpoint_value < np.mean(returns):
-                    self.checkpoint_value = np.mean(returns)
-                    self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
+                if self.checkpoint_epsilon:
+                    if self.checkpoint_values[-1] == float('inf') or np.mean(returns) > self.checkpoint_values[-1]:
+                        self.checkpoint_values.append(-1, np.mean(returns))
+                        self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
+                        self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
                 print('mean training return', self.training_evaluation_frequency, ' returns:', self.elapsed_episodes
                       , ':', np.mean(returns))
                 if eval_env:

@@ -7,7 +7,7 @@ class RewardLoss(AuxiliaryLoss):
     def __init__(self, criterion=nn.MSELoss):
         super().__init__(criterion)
 
-    def get_loss(self, model_outputs, actions, rewards, dones):
+    def get_loss(self, model_outputs, actions, rewards, dones, auxiliary_info):
         return self.criterion(model_outputs.rewards, rewards.view(-1, 1))
 
     def get_name(self):

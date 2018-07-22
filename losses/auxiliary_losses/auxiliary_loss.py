@@ -3,7 +3,7 @@ class AuxiliaryLoss:
     def __init__(self, criterion):
         self.criterion = criterion()
 
-    def get_loss(self, model_outputs, actions, rewards, dones):
+    def get_loss(self, model_outputs, actions, rewards, dones, auxiliary_info):
         """
         inputs must by pytorch tensors
         """

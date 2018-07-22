@@ -2,6 +2,7 @@ class LinearScheduler:
     def __init__(self, initial_epsilon=1., lower_bound=0.05, decay_steps=5e4, do_decay=True):
         self.epsilon = initial_epsilon
         self.lower_bound = lower_bound
+        self.decay_steps = decay_steps
         self.decay = (initial_epsilon - lower_bound) / decay_steps
         self.do_decay = do_decay
         # TODO log values
@@ -21,3 +22,6 @@ class LinearScheduler:
     def set_do_decay(self):
         # TODO log values
         self.do_decay = True
+
+    def get_decay_steps(self):
+        return self.decay_steps

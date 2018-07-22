@@ -18,7 +18,7 @@ class BaseModel(nn.Module):
         """
         raise NotImplementedError
 
-    def get_output_namedtuple(self):
+    def get_output_namedtuple(self):  # TODO is this used?
         return self.output_tuple
 
     @staticmethod

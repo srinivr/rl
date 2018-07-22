@@ -20,7 +20,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=LinearScheduler(decay_steps=5e4), target_synchronize_steps=1e4,
                  td_losses=None, grad_clamp=None, n_step=5, n_processes=1, auxiliary_losses=None, input_transforms=None,
-                 output_transforms=None, log=True, checkpoint_epsilon=False):
+                 output_transforms=None, checkpoint_epsilon=False, auxiliary_env_info=None, log=True):
 
         self.max_steps = max_steps
         self.n_step = n_step
@@ -30,16 +30,19 @@ class NStepSynchronousDQNAgent(BaseAgent):
         self.batch_values = namedtuple('Values', 'done step_ctr rewards states actions targets')
         self.checkpoint_epsilon = checkpoint_epsilon
         if self.checkpoint_epsilon:
-            self.checkpoint_values = [float('inf')]  # [-1] is always inf; stores threshold to cross to use next scheduler
-            self.original_epsilon_scheduler = copy.deepcopy(epsilon_scheduler)  # use this a template to create new schedulers
+            self.checkpoint_values = [
+                float('inf')]  # [-1] is always inf; stores threshold to cross to use next scheduler
+            self.original_epsilon_scheduler = copy.deepcopy(
+                epsilon_scheduler)  # use this a template to create new schedulers
             self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
 
         super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency,
                          optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, True, target_synchronize_steps,
-                         td_losses, grad_clamp, auxiliary_losses, input_transforms, output_transforms, log)
+                         td_losses, grad_clamp, auxiliary_losses, input_transforms, output_transforms,
+                         auxiliary_env_info, log)
 
-    def learn(self, envs, eval_env=None, n_learn_iterations=None, n_eval_steps=100, step_states=None,
+    def learn(self, envs, eval_env=None, n_learn_iterations=None, n_eval_episodes=100, step_states=None,
               episode_returns=None, episode_lengths=None):
         """
         env and eval_env should be different! (since we are using SubProcvecEnv and _eval calls env.reset())
@@ -52,7 +55,8 @@ class NStepSynchronousDQNAgent(BaseAgent):
         n_learn_iterations = n_learn_iterations // self.n_processes  # to keep counting simple  # TODO ensure mod == 0
         ephemeral_step_count = 0
 
-        batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, = [], [], [], [], []
+        batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, batch_auxiliary_info = [], [], [], \
+                                                                                                          [], [], []
 
         if step_states is None:  # if not None => restarting from given state
             step_states = envs.reset()
@@ -65,8 +69,8 @@ class NStepSynchronousDQNAgent(BaseAgent):
 
         while ephemeral_step_count < n_learn_iterations:
             ephemeral_step_count += 1
-            step_actions, step_next_states, step_rewards, step_done, step_info = self._get_epsilon_greedy_action_and_step(
-                envs, step_states, epsilon_scheduler_index)
+            step_actions, step_next_states, step_rewards, step_done, step_info, *auxiliary_info = \
+                self._get_epsilon_greedy_action_and_step(envs, step_states, epsilon_scheduler_index)
             self._update_episode_values(episode_returns, episode_lengths, step_rewards, step_done,
                                         cumulative_returns)  # episode housekeeping
             if self.checkpoint_epsilon:
@@ -77,6 +81,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
             for b, s in zip([batch_states, batch_actions, batch_next_states, batch_rewards, batch_done],
                             [step_states, step_actions, step_next_states, step_rewards, step_done]):
                 b.append(s)
+            batch_auxiliary_info.extend(auxiliary_info)
             if self.elapsed_env_steps % self.n_step == 0:
                 # if ephemeral_step_count % self.n_step == 0:  # TODO Mismatch in n step -> n_learn not multiple of batch_size
                 states, actions, rewards, targets, batch_done = self.__get_batch(batch_states, batch_actions,
@@ -84,20 +89,23 @@ class NStepSynchronousDQNAgent(BaseAgent):
                                                                                  batch_rewards,
                                                                                  batch_done)  # batched n-step targets
                 #  notice above batch_done has been from list of lists to a list
-                self._step_updates(states, actions, rewards, targets, batch_done)
-                batch_states, batch_actions, batch_next_states, batch_rewards, batch_done = [], [], [], [], []
+                batch_auxiliary_info = self._get_auxiliary_batch(*batch_auxiliary_info)
+                self._step_updates(states, actions, rewards, targets, batch_done, batch_auxiliary_info)
+                batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, batch_auxiliary_info = \
+                    [], [], [], [], [], []
             step_states = step_next_states
             if self.checkpoint_epsilon and self.elapsed_env_steps % self.training_evaluation_frequency == 0:
                 if len(self.checkpoint_values) == 1 or np.mean(cumulative_returns) > self.checkpoint_values[-2]:
                     self.checkpoint_values.insert(-1, np.mean(cumulative_returns))
                     self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
-                    self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
+                    if self.log:
+                        self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
                 cumulative_returns = []
             self._reset_episode_values(episode_returns, episode_lengths, step_done)
             # beyond this point all episode variable must have been reset
             if eval_env and self.elapsed_env_steps % self.training_evaluation_frequency == 0:
                 print('step:', self.elapsed_env_steps, end=' ')
-                self._eval(eval_env, n_eval_steps)
+                self._eval(eval_env, n_eval_episodes)
 
         return step_states, episode_returns, episode_lengths
 
@@ -149,12 +157,13 @@ class NStepSynchronousDQNAgent(BaseAgent):
         episode_lengths[np_done] = 0.
 
     def _training_log(self, episode_returns, episode_lengths, step_done):
-        np_done = np.array(step_done)
-        if np.sum(np_done) != 0:
-            self.writer.add_scalar('data/train_rewards', np.sum(episode_returns[np_done]) / np.sum(step_done),
-                                   self.elapsed_env_steps)
-            self.writer.add_scalar('data/train_episode_length', np.sum(episode_lengths[np_done]) / np.sum(step_done),
-                                   self.elapsed_env_steps)
+        if self.log:
+            np_done = np.array(step_done)
+            if np.sum(np_done) != 0:
+                self.writer.add_scalar('data/train_rewards', np.sum(episode_returns[np_done]) / np.sum(step_done),
+                                       self.elapsed_env_steps)
+                self.writer.add_scalar('data/train_episode_length', np.sum(episode_lengths[np_done]) / np.sum(step_done),
+                                       self.elapsed_env_steps)
 
     def _get_epsilon_greedy_action(self, env, states, *args):
         if not self.checkpoint_epsilon:
@@ -173,6 +182,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
                 else:
                     actions.append(greedy_actions[idx])
                 self.epsilon_schedulers[epsilon_scheduler_index[idx]].step()
-                self.writer.add_scalar('data/epsilon_dynamic', self.epsilon_schedulers[epsilon_scheduler_index[idx]]
-                                       .get_epsilon(), self.elapsed_env_steps + idx + 1)
+                if self.log:
+                    self.writer.add_scalar('data/epsilon_dynamic', self.epsilon_schedulers[epsilon_scheduler_index[idx]]
+                                           .get_epsilon(), self.elapsed_env_steps + idx + 1)
             return actions

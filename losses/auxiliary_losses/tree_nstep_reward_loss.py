@@ -12,7 +12,7 @@ class TreeNStepRewardLoss(AuxiliaryLoss):
         self.n_step = n_step
         self.n_proc = n_proc
 
-    def get_loss(self, model_outputs, actions, rewards, batch_done):
+    def get_loss(self, model_outputs, actions, rewards, batch_done, auxiliary_info):
         # Assumption: model_outputs are of stack such at 1..n_proc corresponds to t=1, next n_proc to t=2 and so on
         size = model_outputs.q_values.size()[0]
         targets = []

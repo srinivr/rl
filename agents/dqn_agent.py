@@ -18,7 +18,7 @@ class DQNAgent(BaseAgent):
                  DecayScheduler(), epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4,
                  td_losses=None, grad_clamp=None, mb_size=32, replay_buffer_size=100000,
                  replay_buffer_min_experience=None, auxiliary_losses=None, input_transforms=[], output_transforms=[],
-                 log=True, checkpoint_epsilon=False):
+                 checkpoint_epsilon=False, auxiliary_env_info=None, log=True):
 
         self.n_episodes = n_episodes
         self.mb_size = mb_size
@@ -30,7 +30,6 @@ class DQNAgent(BaseAgent):
             else:
                 self.replay_buffer_min_experience = self.mb_size
             self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
-        self.transitions = namedtuple('Transition', 'state action reward next_state done')
         self.checkpoint_epsilon = checkpoint_epsilon
         if self.checkpoint_epsilon:
             self.checkpoint_values = [float('inf')]  # [-1] is always infinity; threshold to use next scheduler
@@ -40,15 +39,19 @@ class DQNAgent(BaseAgent):
                          optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
                          target_synchronize_steps, td_losses, grad_clamp, auxiliary_losses, input_transforms,
-                         output_transforms, log)
+                         output_transforms, auxiliary_env_info, log)
+        if self.auxiliary_env_info:
+            self.transitions = namedtuple('Transition', 'state action reward next_state done auxiliary')
+        else:
+            self.transitions = namedtuple('Transition', 'state action reward next_state done')
 
     def learn(self, env, eval_env=None, n_learn_iterations=None, n_eval_episodes=100):
         if not eval_env:
             print('no evaluation environment specified. evaluation will not be performed..')
         if n_learn_iterations is None:
             n_learn_iterations = self.n_episodes
-        assert 1 <= n_learn_iterations <= self.n_episodes
-        returns = []
+        assert 1 <= n_learn_iterations <= self.n_episodes  # TODO learn + elapsed < n_episodes
+        returns, episode_lengths = [], []
         ephemeral_episode_count = 0
         while ephemeral_episode_count < n_learn_iterations:
             ephemeral_episode_count += 1
@@ -60,40 +63,48 @@ class DQNAgent(BaseAgent):
             if self.checkpoint_epsilon:
                 self.epsilon_scheduler, epsilon_scheduler_index = self.epsilon_schedulers[0], 0
             while not done:
-                action, o_, reward, done, info = self._get_epsilon_greedy_action_and_step(env, o)
+                action, o_, reward, done, info, *auxiliary_info = self._get_epsilon_greedy_action_and_step(env, o)
+                #if self.auxiliary_env_info:
+                #    auxiliary_info = self.auxiliary_tuple(*auxiliary_info)
                 episode_return += reward
                 episode_length += 1
-                self.replay_buffer.insert(self.transitions(o, action, reward, o_, done))
+                self._insert_in_replay_buffer(o, action, reward, o_, done, *auxiliary_info)
                 if self._is_gather_experience():
                     continue
                 if self.checkpoint_epsilon:
                     if episode_return > self.checkpoint_values[epsilon_scheduler_index]:
                         epsilon_scheduler_index += 1
                         self.epsilon_scheduler = self.epsilon_schedulers[epsilon_scheduler_index]
-                states, actions, rewards, targets, batch_done = self.__get_batch()  # note: __ not _
-                self._step_updates(states, actions, rewards, targets, batch_done)
+                states, actions, rewards, targets, batch_done, batch_auxiliary_info = self.__get_batch()  # note: __ not _
+                self._step_updates(states, actions, rewards, targets, batch_done, batch_auxiliary_info)
                 o = o_
             self._episode_updates()
             if self.log:
                 self._training_log(episode_return, episode_length)
             returns.append(episode_return)
+            episode_lengths.append(episode_length)
             if self.elapsed_episodes % self.training_evaluation_frequency == 0:
                 if self.checkpoint_epsilon:
                     if self.checkpoint_values[-1] == float('inf') or np.mean(returns) > self.checkpoint_values[-1]:
                         self.checkpoint_values.append(-1, np.mean(returns))
                         self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
-                        self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
-                print('mean training return', self.training_evaluation_frequency, ' returns:', self.elapsed_episodes
+                        if self.log:
+                            self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
+                print('mean training return at step:', self.elapsed_env_steps, ' returns:', self.elapsed_episodes
                       , ':', np.mean(returns))
+                print('mean episode length:', np.mean(episode_lengths))
+                returns, episode_lengths = [], []
                 if eval_env:
                     print('ep:', self.elapsed_episodes, end=' ')
                     self._eval(eval_env, n_eval_episodes)
-                returns = []
 
     def __get_batch(self):
         samples = self.replay_buffer.sample(self.mb_size)
         batch = self.transitions(*zip(*samples))  # https://stackoverflow.com/a/19343/3343043
-        return super()._get_batch(batch.state, batch.action, batch.next_state, batch.reward, batch.done)
+        auxiliary_info = batch.auxiliary if self.auxiliary_env_info else []
+        result = *super()._get_batch(batch.state, batch.action, batch.next_state, batch.reward, batch.done), self.\
+            _get_auxiliary_batch(*auxiliary_info)
+        return result
 
     def _is_gather_experience(self):
         return len(self.replay_buffer) < self.replay_buffer_min_experience
@@ -112,6 +123,13 @@ class DQNAgent(BaseAgent):
     def _get_n_steps(self):
         return 1
 
+    def _insert_in_replay_buffer(self, state, action, reward, next_state, done, *auxiliary_info):
+        if self.auxiliary_env_info:
+            self.replay_buffer.insert(self.transitions(state, action, reward, next_state, done, auxiliary_info))
+        else:
+            self.replay_buffer.insert(self.transitions(state, action, reward, next_state, done))
+
     def _training_log(self, ret, length):
-        self.writer.add_scalar('data/train_rewards', ret, self.elapsed_env_steps)
-        self.writer.add_scalar('data/train_episode_length', length, self.elapsed_env_steps)
+        if self.log:
+            self.writer.add_scalar('data/train_rewards', ret, self.elapsed_env_steps)
+            self.writer.add_scalar('data/train_episode_length', length, self.elapsed_env_steps)

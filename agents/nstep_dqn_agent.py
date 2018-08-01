@@ -15,12 +15,12 @@ class NStepSynchronousDQNAgent(BaseAgent):
     https://arxiv.org/pdf/1710.11417.pdf (batched, up-to) n-step
     """
 
-    def __init__(self, experiment_id, model_class, model_params, rng, device='cpu', max_steps=1000000000,
+    def __init__(self, model_class, model_params, rng, device='cpu', max_steps=1000000000,
                  training_evaluation_frequency=10000,
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=LinearScheduler(decay_steps=5e4), target_synchronize_steps=1e4,
                  td_losses=None, grad_clamp=None, n_step=5, n_processes=1, auxiliary_losses=None, input_transforms=None,
-                 output_transforms=None, checkpoint_epsilon=False, auxiliary_env_info=None, log=True):
+                 output_transforms=None, checkpoint_epsilon=False, auxiliary_env_info=None, log=True, log_dir=None):
 
         self.max_steps = max_steps
         self.n_step = n_step
@@ -36,11 +36,11 @@ class NStepSynchronousDQNAgent(BaseAgent):
                 epsilon_scheduler)  # use this a template to create new schedulers
             self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
 
-        super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency,
+        super().__init__(model_class, model_params, rng, device, training_evaluation_frequency,
                          optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, True, target_synchronize_steps,
                          td_losses, grad_clamp, auxiliary_losses, input_transforms, output_transforms,
-                         auxiliary_env_info, log)
+                         auxiliary_env_info, log, log_dir)
 
     def learn(self, envs, eval_env=None, n_learn_iterations=None, n_eval_episodes=100, step_states=None,
               episode_returns=None, episode_lengths=None):

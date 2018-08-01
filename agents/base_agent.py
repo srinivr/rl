@@ -12,11 +12,11 @@ from tensorboardX import SummaryWriter
 
 class BaseAgent:
 
-    def __init__(self, experiment_id, model_class, model_params, rng, device='cpu', training_evaluation_frequency=100,
+    def __init__(self, model_class, model_params, rng, device='cpu', training_evaluation_frequency=100,
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True,
                  target_synchronize_steps=1e4, td_losses=None, grad_clamp=None, auxiliary_losses=None,
-                 input_transforms=None, output_transforms=None, auxiliary_env_info=None, log=True):
+                 input_transforms=None, output_transforms=None, auxiliary_env_info=None, log=True, log_dir=None):
 
         self.model_class = model_class
         self.rng = rng
@@ -47,8 +47,8 @@ class BaseAgent:
             self.auxiliary_tuple = namedtuple('auxiliary', self.auxiliary_env_info.names)
         self.log = log
         if self.log:
-            self.writer = SummaryWriter(comment=experiment_id + '_device_' + self.device + '_decay_' + str(
-                self.epsilon_scheduler.get_decay_steps()))
+            assert log_dir is not None
+            self.writer = SummaryWriter(log_dir=log_dir)
 
     def learn(self, env, eval_env=None, n_learn_iterations=None, n_eval_episodes=100):
         raise NotImplementedError
@@ -141,7 +141,7 @@ class BaseAgent:
                 length += 1
                 o = self._apply_input_transform(o)
                 action = self._get_greedy_action(self.model_target, o, action_type)
-                o, rew, done, info = env.step(action)
+                o, rew, done, info, *auxiliary_info = env.step(action)
                 ret += rew
             returns.append(ret)
         print('mean eval return:', np.mean(returns), '..avg episode length:', length / n_episodes)
@@ -162,7 +162,7 @@ class BaseAgent:
 
         :param states: transformed input states
         :param batch_done: list
-        :param auxiliary_info: a namedtuple containing arrays (NOT pytorch tensors); conversion to right type in losses
+        :param auxiliary_info: a namedtuple containing pytorch tensors
         """
         if states.size()[0] < 2:  # TODO do this only when batchnorm is used?
             print('Batch has only 1 example. Can cause problems if batch norm was used.. Skipping step')

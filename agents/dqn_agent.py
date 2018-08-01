@@ -12,13 +12,13 @@ import numpy as np
 
 class DQNAgent(BaseAgent):
 
-    def __init__(self, experiment_id, model_class, model_params, rng, device='cpu', n_episodes=2000,
+    def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000,
                  training_evaluation_frequency=100, optimizer=optim.RMSprop, optimizer_parameters=
                  {'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss, gamma=0.99, epsilon_scheduler=
                  DecayScheduler(), epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4,
                  td_losses=None, grad_clamp=None, mb_size=32, replay_buffer_size=100000,
                  replay_buffer_min_experience=None, auxiliary_losses=None, input_transforms=[], output_transforms=[],
-                 checkpoint_epsilon=False, auxiliary_env_info=None, log=True):
+                 checkpoint_epsilon=False, auxiliary_env_info=None, log=True, log_dir=None):
 
         self.n_episodes = n_episodes
         self.mb_size = mb_size
@@ -35,11 +35,11 @@ class DQNAgent(BaseAgent):
             self.checkpoint_values = [float('inf')]  # [-1] is always infinity; threshold to use next scheduler
             self.original_epsilon_scheduler = copy.deepcopy(self.epsilon_scheduler)
             self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
-        super().__init__(experiment_id, model_class, model_params, rng, device, training_evaluation_frequency,
+        super().__init__(model_class, model_params, rng, device, training_evaluation_frequency,
                          optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
                          target_synchronize_steps, td_losses, grad_clamp, auxiliary_losses, input_transforms,
-                         output_transforms, auxiliary_env_info, log)
+                         output_transforms, auxiliary_env_info, log, log_dir)
         if self.auxiliary_env_info:
             self.transitions = namedtuple('Transition', 'state action reward next_state done auxiliary')
         else:

@@ -31,15 +31,16 @@ class DQNAgent(BaseAgent):
                 self.replay_buffer_min_experience = self.mb_size
             self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
         self.checkpoint_epsilon = checkpoint_epsilon
-        if self.checkpoint_epsilon:
-            self.checkpoint_values = [float('inf')]  # [-1] is always infinity; threshold to use next scheduler
-            self.original_epsilon_scheduler = copy.deepcopy(self.epsilon_scheduler)
-            self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
         super().__init__(model_class, model_params, rng, device, training_evaluation_frequency,
                          optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
                          target_synchronize_steps, td_losses, grad_clamp, auxiliary_losses, input_transforms,
                          output_transforms, auxiliary_env_info, log, log_dir)
+        if self.checkpoint_epsilon:
+            self.checkpoint_frequency = 4 * self.training_evaluation_frequency
+            self.checkpoint_values = [float('inf')]  # [-1] is always infinity; threshold to use next scheduler
+            self.original_epsilon_scheduler = copy.deepcopy(self.epsilon_scheduler)
+            self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
         if self.auxiliary_env_info:
             self.transitions = namedtuple('Transition', 'state action reward next_state done auxiliary')
         else:
@@ -83,20 +84,19 @@ class DQNAgent(BaseAgent):
                 self._training_log(episode_return, episode_length)
             returns.append(episode_return)
             episode_lengths.append(episode_length)
-            if self.elapsed_episodes % self.training_evaluation_frequency == 0:
-                if self.checkpoint_epsilon:
-                    if self.checkpoint_values[-1] == float('inf') or np.mean(returns) > self.checkpoint_values[-1]:
-                        self.checkpoint_values.append(-1, np.mean(returns))
-                        self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
-                        if self.log:
-                            self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
-                print('mean training return at step:', self.elapsed_env_steps, ' returns:', self.elapsed_episodes
-                      , ':', np.mean(returns))
-                print('mean episode length:', np.mean(episode_lengths))
+            if self.checkpoint_epsilon and self.elapsed_episodes % self.checkpoint_frequency == 0:
+                if self.checkpoint_values[-1] == float('inf') or np.mean(returns) > self.checkpoint_values[-2]:
+                    self.checkpoint_values.append(-1, np.mean(returns))
+                    self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
+                    if self.log:
+                        self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
+                # print('mean training return at step:', self.elapsed_env_steps, ' returns:', self.elapsed_episodes
+                #       , ':', np.mean(returns))
+                # print('mean episode length:', np.mean(episode_lengths))
                 returns, episode_lengths = [], []
-                if eval_env:
-                    print('ep:', self.elapsed_episodes, end=' ')
-                    self._eval(eval_env, n_eval_episodes)
+            if eval_env and self.elapsed_episodes % self.training_evaluation_frequency == 0:
+                print('ep:', self.elapsed_episodes, end=' ')
+                self._eval(eval_env, n_eval_episodes)
 
     def __get_batch(self):
         samples = self.replay_buffer.sample(self.mb_size)

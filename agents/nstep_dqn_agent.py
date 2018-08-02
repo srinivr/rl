@@ -10,6 +10,7 @@ from agents.base_agent import BaseAgent
 from utils.scheduler.linear_scheduler import LinearScheduler
 
 
+# TODO make scheduler steps consistent
 class NStepSynchronousDQNAgent(BaseAgent):
     """
     https://arxiv.org/pdf/1710.11417.pdf (batched, up-to) n-step
@@ -29,18 +30,19 @@ class NStepSynchronousDQNAgent(BaseAgent):
                 self.n_step * self.n_processes)))  # model is updated every t_s_s environment steps
         self.batch_values = namedtuple('Values', 'done step_ctr rewards states actions targets')
         self.checkpoint_epsilon = checkpoint_epsilon
-        if self.checkpoint_epsilon:
-            self.checkpoint_values = [
-                float('inf')]  # [-1] is always inf; stores threshold to cross to use next scheduler
-            self.original_epsilon_scheduler = copy.deepcopy(
-                epsilon_scheduler)  # use this a template to create new schedulers
-            self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
-
         super().__init__(model_class, model_params, rng, device, training_evaluation_frequency,
                          optimizer,
                          optimizer_parameters, criterion, gamma, epsilon_scheduler, True, target_synchronize_steps,
                          td_losses, grad_clamp, auxiliary_losses, input_transforms, output_transforms,
                          auxiliary_env_info, log, log_dir)
+
+        if self.checkpoint_epsilon:
+            self.checkpoint_frequency = 4 * self.training_evaluation_frequency  # TODO external parameter?
+            self.checkpoint_values = [
+                float('inf')]  # [-1] is always inf; stores threshold to cross to use next scheduler
+            self.original_epsilon_scheduler = copy.deepcopy(
+                epsilon_scheduler)  # use this a template to create new schedulers
+            self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
 
     def learn(self, envs, eval_env=None, n_learn_iterations=None, n_eval_episodes=100, step_states=None,
               episode_returns=None, episode_lengths=None):
@@ -94,7 +96,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
                 batch_states, batch_actions, batch_next_states, batch_rewards, batch_done, batch_auxiliary_info = \
                     [], [], [], [], [], []
             step_states = step_next_states
-            if self.checkpoint_epsilon and self.elapsed_env_steps % self.training_evaluation_frequency == 0:
+            if self.checkpoint_epsilon and self.elapsed_env_steps % self.checkpoint_frequency == 0:
                 if len(self.checkpoint_values) == 1 or np.mean(cumulative_returns) > self.checkpoint_values[-2]:
                     self.checkpoint_values.insert(-1, np.mean(cumulative_returns))
                     self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))

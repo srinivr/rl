@@ -7,17 +7,20 @@ import torch.nn as nn
 import envs.treeqn.push
 from agents.iterative_agents.iterative_agent import IterativeAgent
 from agents.nstep_dqn_agent import NStepSynchronousDQNAgent
+from envs.wrappers.frame_stack_wrappers import MultiProcessFrameStackWrapper, FrameStackWrapper
+from envs.wrappers.pytorch_image_wrapper import PyTorchImageWrapper
 from losses.auxiliary_losses.probable_action_loss import ProbableActionLoss
 from losses.auxiliary_losses.reward_loss import RewardLoss
 from losses.auxiliary_losses.samples_action_loss import SamplesActionLoss
 from losses.auxiliary_losses.tree_nstep_reward_loss import TreeNStepRewardLoss
 from models.classic_control.simple_cartpole_model import SimpleCartPoleModel
-# from envs.atari.atari_wrapper import wrap_deepmind
+from envs.wrappers.atari_wrappers import wrap_deepmind
 from agents.dqn_agent import DQNAgent
 from models.iterative.feature_models.push_model import PushModel
 from models.iterative.value_models.q_model import QModel
 from models.maze.fc_maze import FCMaze
-from models.treeqn.push_dqn_model import PushDQNModel
+from models.treeqn.atari_model import AtariTreeModel
+from models.treeqn.push_fc_model import PushFCModel
 from models.treeqn.push_tree_model import PushTreeModel
 from losses.td_losses.q_loss import QLoss
 from envs.wrappers.maze_wrappers import CorrectActionWrapper, MaxStepWrapper, FixedRandomEnvsWrapper
@@ -29,13 +32,14 @@ import socket
 from datetime import datetime
 
 
-def make_env(env_id, seed):
+def make_env(env_id, seed, wrap=False):
     def _f():
         env = gym.make(env_id)
-        # env = PyTorchImageWrapper(env)
-        # env = wrap_deepmind(env)
+        if wrap:
+            env = wrap_deepmind(env, episode_life=True, clip_rewards=True, skip=4)
         # print('max_steps:', env._max_episode_steps)
         env.seed(seed)
+        env = PyTorchImageWrapper(env)
         return env
 
     return _f
@@ -55,6 +59,7 @@ experiment = 'PushNStepSyncDQN'
 # experiment = 'CartPoleNStepSynchronousDQN'
 # experiment = 'PushIterativeDQN'
 # experiment = 'TMaze'
+# experiment = 'PongNStep'
 
 if cuda:
     device = 'cuda'
@@ -68,12 +73,17 @@ log_dir = os.path.join('runs', experiment, '_' + current_time + '_' + socket.get
 
 if experiment == 'CartPoleDQN':
     env = gym.make('CartPole-v0')
-    agent = DQNAgent(experiment, SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=100000,
-                     device=device,
+    agent = DQNAgent(SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=100000, device=device,
                      epsilon_scheduler_use_steps=True, epsilon_scheduler=LinearScheduler(decay_steps=int(15e3)),
                      target_synchronize_steps=10000, grad_clamp=[-1, 1],
-                     training_evaluation_frequency=100, td_losses=[QLoss()], auxiliary_env_info=
-                     auxiliary_env_info(['actions', 'boxtion'], [torch.long, torch.long]))
+                     training_evaluation_frequency=100, td_losses=[QLoss()], log=False)
+
+    # agent = DQNAgent(SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=50000, device=device,
+    #                  epsilon_scheduler_use_steps=True, epsilon_scheduler=LinearScheduler(decay_steps=int(1e4), lower_bound=0.02),
+    #                  target_synchronize_steps=500, grad_clamp=[-1, 1],
+    #                  training_evaluation_frequency=100, td_losses=[QLoss()], log=False,
+    #                  replay_buffer_min_experience=1000, gamma=1.)
+
     agent.learn(env, env)
 
 elif experiment == 'CartPoleNStepSynchronousDQN':
@@ -92,7 +102,7 @@ elif experiment == 'CartPoleNStepSynchronousDQN':
 elif experiment == 'PushNStepSyncDQN':
     env_name = 'Push-v0'
     env = gym.make(env_name)
-    # env = PyTorchImageWrapper(env)
+    env = PyTorchImageWrapper(env)
     nproc = 16
     envs = [make_env(env_name, seed) for seed in range(nproc)]
 
@@ -102,9 +112,9 @@ elif experiment == 'PushNStepSyncDQN':
     agent = NStepSynchronousDQNAgent(PushTreeModel, [5, 4, 2], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
                                      grad_clamp=[-1, 1], training_evaluation_frequency=40000, criterion=nn.MSELoss,
-                                     epsilon_scheduler=LinearScheduler(decay_steps=1e5), td_losses=[QLoss()],
+                                     epsilon_scheduler=LinearScheduler(decay_steps=5e5), td_losses=[QLoss()],
                                      auxiliary_losses=[TreeNStepRewardLoss(2, 5, nproc)], checkpoint_epsilon=True,
-                                     log_dir=log_dir)
+                                     log=True, log_dir=log_dir)
     agent.learn(envs, env)
     # agent._eval(env)
 
@@ -122,7 +132,7 @@ elif experiment == 'PushDQN':
     envs = [make_env(env_name, seed) for seed in range(nproc)]
 
     envs = SubprocVecEnv(envs)
-    agent = NStepSynchronousDQNAgent(PushDQNModel, [5, 4], None, n_processes=nproc, device=device,
+    agent = NStepSynchronousDQNAgent(PushFCModel, [5, 4], None, n_processes=nproc, device=device,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
                                      grad_clamp=[-1, 1], training_evaluation_frequency=40000, criterion=nn.MSELoss,
                                      epsilon_scheduler=LinearScheduler(decay_steps=5e4), td_losses=[QLoss()],
@@ -229,3 +239,24 @@ elif experiment == 'debug':
     s = torch.tensor(s, dtype=torch.float, device=device)
     output = model(s)
     print('output:', output)
+
+elif experiment == 'PongNStep':
+    env_name = 'PongNoFrameskip-v4'
+    env = [make_env(env_name, 100, wrap=True) for seed in range(1)]
+    env = SubprocVecEnv(env)
+    env = FrameStackWrapper(env, 1, n_stack=10)
+    nproc = 16
+    envs = [make_env(env_name, seed, wrap=True) for seed in range(nproc)]
+    envs = SubprocVecEnv(envs)
+    envs = MultiProcessFrameStackWrapper(envs, nproc, n_stack=10)
+
+    # params
+    optimizer_parameters = {'lr': 1e-4, 'alpha': 0.99, 'eps': 1e-5}
+    agent = NStepSynchronousDQNAgent(AtariTreeModel, [10, env.action_space.n], None, n_processes=nproc, device=device,
+                                     optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
+                                     grad_clamp=[-1, 1], training_evaluation_frequency=40000, criterion=nn.MSELoss,
+                                     epsilon_scheduler=LinearScheduler(decay_steps=5e4), td_losses=[QLoss()],
+                                     auxiliary_losses=[TreeNStepRewardLoss(2, 5, nproc)], checkpoint_epsilon=False,
+                                     log=True, log_dir=log_dir)
+    agent.learn(envs, env)
+    # agent._eval(env)

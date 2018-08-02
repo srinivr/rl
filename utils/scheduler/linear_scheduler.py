@@ -15,13 +15,5 @@ class LinearScheduler:
             # TODO log values
             self.epsilon = max(self.lower_bound, self.epsilon - self.decay)
 
-    def set_no_decay(self):
-        # TODO log values
-        self.do_decay = False
-
-    def set_do_decay(self):
-        # TODO log values
-        self.do_decay = True
-
     def get_decay_steps(self):
         return self.decay_steps

@@ -85,7 +85,8 @@ class Push(gym.Env):
         self.boxes_left = self.n_boxes
         self.edge_boxes = 0
 
-        return self._transform(self.state)
+        return self.state
+        # return self._transform(self.state)
 
     def step(self, action):
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
@@ -172,7 +173,8 @@ class Push(gym.Env):
 
         self.pos = pos
 
-        return self._transform(self.state), reward, done, {}
+        return self.state, reward, done, {}
+        # return self._transform(self.state), reward, done, {}
 
     def is_in_grid(self, point):
         return (0 <= point[0] < self.w) and (0 <= point[1] < self.w)

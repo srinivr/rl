@@ -9,6 +9,16 @@ from models.base_model import BaseModel
 
 
 class TreeQNModel(BaseModel):
+    """
+    Perform TreeQN steps for the given encoding
+    """
+    def _get_encoding(self, x):
+        raise NotImplementedError
+
+    @staticmethod
+    def get_input_dimension():
+        raise NotImplementedError
+
     def __init__(self, n_actions, depth=2, state_embedding=128, reward_embedding=64, gamma=0.99,
                  lambd=0.8, reward_grounding=False, model_grounding=False):
         self.n_actions = n_actions
@@ -91,10 +101,4 @@ class TreeQNModel(BaseModel):
     def _backup_fn(self, q_a):
         return torch.sum(F.softmax(q_a, dim=1) * q_a, dim=1, keepdim=True)
 
-    def _get_encoding(self, x):
-        raise NotImplementedError
-
-    @staticmethod
-    def get_input_dimension():
-        raise NotImplementedError
 

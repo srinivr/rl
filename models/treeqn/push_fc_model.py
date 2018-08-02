@@ -4,7 +4,7 @@ from models.base_model import BaseModel
 from models.common.encoders.encoders import Encoder
 
 
-class PushDQNModel(BaseModel):
+class PushFCModel(BaseModel):
 
     def __init__(self, n_input_channels, n_actions, state_embedding=512):
         self.n_input_channels = n_input_channels

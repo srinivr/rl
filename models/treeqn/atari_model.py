@@ -6,7 +6,7 @@ from models.treeqn.treeqn_model import TreeQNModel
 class AtariTreeModel(TreeQNModel):
     def __init__(self, n_input_channels=4, n_actions=None, depth=2, state_embedding=512, reward_embedding=64, gamma=0.99,
                  lambd=0.8, reward_grounding=True, model_grounding=False):
-        self.convolution_dim_out = 9 * 9 * 32
+        self.convolution_dim_out = 2592  # 9 * 9 * 32
         super().__init__(n_actions, depth, state_embedding, reward_embedding, gamma, lambd, reward_grounding,
                          model_grounding)
 

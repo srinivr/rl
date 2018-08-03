@@ -18,7 +18,8 @@ class DQNAgent(BaseAgent):
                  DecayScheduler(), epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4,
                  td_losses=None, grad_clamp=None, mb_size=32, replay_buffer_size=100000,
                  replay_buffer_min_experience=None, auxiliary_losses=None, input_transforms=[], output_transforms=[],
-                 checkpoint_epsilon=False, auxiliary_env_info=None, log=True, log_dir=None):
+                 checkpoint_epsilon=False, checkpoint_epsilon_frequency=None, auxiliary_env_info=None, log=True,
+                 log_dir=None):
 
         self.n_episodes = n_episodes
         self.mb_size = mb_size
@@ -37,7 +38,8 @@ class DQNAgent(BaseAgent):
                          target_synchronize_steps, td_losses, grad_clamp, auxiliary_losses, input_transforms,
                          output_transforms, auxiliary_env_info, log, log_dir)
         if self.checkpoint_epsilon:
-            self.checkpoint_frequency = 4 * self.training_evaluation_frequency
+            assert checkpoint_epsilon_frequency is not None
+            self.checkpoint_frequency = checkpoint_epsilon_frequency
             self.checkpoint_values = [float('inf')]  # [-1] is always infinity; threshold to use next scheduler
             self.original_epsilon_scheduler = copy.deepcopy(self.epsilon_scheduler)
             self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]

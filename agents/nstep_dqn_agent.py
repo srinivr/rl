@@ -21,7 +21,8 @@ class NStepSynchronousDQNAgent(BaseAgent):
                  optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
                  gamma=0.99, epsilon_scheduler=LinearScheduler(decay_steps=5e4), target_synchronize_steps=1e4,
                  td_losses=None, grad_clamp=None, n_step=5, n_processes=1, auxiliary_losses=None, input_transforms=None,
-                 output_transforms=None, checkpoint_epsilon=False, auxiliary_env_info=None, log=True, log_dir=None):
+                 output_transforms=None, checkpoint_epsilon=False, checkpoint_epsilon_frequency=None,
+                 auxiliary_env_info=None, log=True, log_dir=None):
 
         self.max_steps = max_steps
         self.n_step = n_step
@@ -37,7 +38,8 @@ class NStepSynchronousDQNAgent(BaseAgent):
                          auxiliary_env_info, log, log_dir)
 
         if self.checkpoint_epsilon:
-            self.checkpoint_frequency = 4 * self.training_evaluation_frequency  # TODO external parameter?
+            assert checkpoint_epsilon_frequency is not None
+            self.checkpoint_frequency = checkpoint_epsilon_frequency
             self.checkpoint_values = [
                 float('inf')]  # [-1] is always inf; stores threshold to cross to use next scheduler
             self.original_epsilon_scheduler = copy.deepcopy(

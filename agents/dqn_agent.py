@@ -14,9 +14,9 @@ class DQNAgent(BaseAgent):
 
     def __init__(self, model_class, model_params, rng, device='cpu', n_episodes=2000,
                  training_evaluation_frequency=100, optimizer=optim.RMSprop, optimizer_parameters=
-                 {'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss, gamma=0.99, epsilon_scheduler=
-                 DecayScheduler(), epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4,
-                 td_losses=None, grad_clamp=None, mb_size=32, replay_buffer_size=100000,
+                 {'lr': 1e-3, 'momentum': 0.9}, lr_scheduler_fn=None, criterion=nn.SmoothL1Loss, gamma=0.99,
+                 epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4,
+                 td_losses=None, grad_clamp=None, grad_clamp_parameters=None, mb_size=32, replay_buffer_size=100000,
                  replay_buffer_min_experience=None, auxiliary_losses=None, input_transforms=[], output_transforms=[],
                  checkpoint_epsilon=False, checkpoint_epsilon_frequency=None, auxiliary_env_info=None, log=True,
                  log_dir=None):
@@ -33,10 +33,10 @@ class DQNAgent(BaseAgent):
             self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
         self.checkpoint_epsilon = checkpoint_epsilon
         super().__init__(model_class, model_params, rng, device, training_evaluation_frequency,
-                         optimizer,
-                         optimizer_parameters, criterion, gamma, epsilon_scheduler, epsilon_scheduler_use_steps,
-                         target_synchronize_steps, td_losses, grad_clamp, auxiliary_losses, input_transforms,
-                         output_transforms, auxiliary_env_info, log, log_dir)
+                         optimizer, optimizer_parameters, lr_scheduler_fn, criterion, gamma, epsilon_scheduler,
+                         epsilon_scheduler_use_steps, target_synchronize_steps, td_losses, grad_clamp,
+                         grad_clamp_parameters, auxiliary_losses, input_transforms, output_transforms,
+                         auxiliary_env_info, log, log_dir)
         if self.checkpoint_epsilon:
             assert checkpoint_epsilon_frequency is not None
             self.checkpoint_frequency = checkpoint_epsilon_frequency
@@ -59,8 +59,9 @@ class DQNAgent(BaseAgent):
         while ephemeral_episode_count < n_learn_iterations:
             ephemeral_episode_count += 1
             o = env.reset()
-            for input_transform in self.input_transforms:
-                o = input_transform.transform(o)
+            # for input_transform in self.input_transforms:
+            #     o = input_transform.transform(o)
+            o = self._apply_input_transform(o)
             done = False
             episode_return, episode_length = 0., 0.
             if self.checkpoint_epsilon:
@@ -87,8 +88,8 @@ class DQNAgent(BaseAgent):
             returns.append(episode_return)
             episode_lengths.append(episode_length)
             if self.checkpoint_epsilon and self.elapsed_episodes % self.checkpoint_frequency == 0:
-                if self.checkpoint_values[-1] == float('inf') or np.mean(returns) > self.checkpoint_values[-2]:
-                    self.checkpoint_values.append(-1, np.mean(returns))
+                if len(self.checkpoint_values) == 1 or np.mean(returns) > self.checkpoint_values[-2]:
+                    self.checkpoint_values.insert(-1, np.mean(returns))
                     self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
                     if self.log:
                         self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)

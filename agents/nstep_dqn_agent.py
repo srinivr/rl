@@ -18,11 +18,12 @@ class NStepSynchronousDQNAgent(BaseAgent):
 
     def __init__(self, model_class, model_params, rng, device='cpu', max_steps=1000000000,
                  training_evaluation_frequency=10000,
-                 optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
-                 gamma=0.99, epsilon_scheduler=LinearScheduler(decay_steps=5e4), target_synchronize_steps=1e4,
-                 td_losses=None, grad_clamp=None, n_step=5, n_processes=1, auxiliary_losses=None, input_transforms=None,
-                 output_transforms=None, checkpoint_epsilon=False, checkpoint_epsilon_frequency=None,
-                 auxiliary_env_info=None, log=True, log_dir=None):
+                 optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, lr_scheduler_fn=None,
+                 criterion=nn.SmoothL1Loss, gamma=0.99, epsilon_scheduler=LinearScheduler(decay_steps=5e4),
+                 target_synchronize_steps=1e4, td_losses=None, grad_clamp=None, grad_clamp_parameters=None, n_step=5,
+                 n_processes=1, auxiliary_losses=None, input_transforms=None, output_transforms=None,
+                 checkpoint_epsilon=False, checkpoint_epsilon_frequency=None, auxiliary_env_info=None, log=True,
+                 log_dir=None):
 
         self.max_steps = max_steps
         self.n_step = n_step
@@ -32,18 +33,16 @@ class NStepSynchronousDQNAgent(BaseAgent):
         self.batch_values = namedtuple('Values', 'done step_ctr rewards states actions targets')
         self.checkpoint_epsilon = checkpoint_epsilon
         super().__init__(model_class, model_params, rng, device, training_evaluation_frequency,
-                         optimizer,
-                         optimizer_parameters, criterion, gamma, epsilon_scheduler, True, target_synchronize_steps,
-                         td_losses, grad_clamp, auxiliary_losses, input_transforms, output_transforms,
-                         auxiliary_env_info, log, log_dir)
+                         optimizer, optimizer_parameters, lr_scheduler_fn, criterion, gamma, epsilon_scheduler, True,
+                         target_synchronize_steps, td_losses, grad_clamp, grad_clamp_parameters, auxiliary_losses,
+                         input_transforms, output_transforms, auxiliary_env_info, log, log_dir)
 
         if self.checkpoint_epsilon:
             assert checkpoint_epsilon_frequency is not None
             self.checkpoint_frequency = checkpoint_epsilon_frequency
             self.checkpoint_values = [
-                float('inf')]  # [-1] is always inf; stores threshold to cross to use next scheduler
-            self.original_epsilon_scheduler = copy.deepcopy(
-                epsilon_scheduler)  # use this a template to create new schedulers
+                float('inf')]  # [-1] is always inf; threshold to use next scheduler
+            self.original_epsilon_scheduler = copy.deepcopy(self.epsilon_scheduler)  # template to create new schedulers
             self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
 
     def learn(self, envs, eval_env=None, n_learn_iterations=None, n_eval_episodes=100, step_states=None,
@@ -99,6 +98,8 @@ class NStepSynchronousDQNAgent(BaseAgent):
                     [], [], [], [], [], []
             step_states = step_next_states
             if self.checkpoint_epsilon and self.elapsed_env_steps % self.checkpoint_frequency == 0:
+                # TODO notice 1.2 below
+                # if len(self.checkpoint_values) == 1 or np.mean(cumulative_returns) > 1.2 * self.checkpoint_values[-2]:
                 if len(self.checkpoint_values) == 1 or np.mean(cumulative_returns) > self.checkpoint_values[-2]:
                     self.checkpoint_values.insert(-1, np.mean(cumulative_returns))
                     self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
@@ -144,6 +145,9 @@ class NStepSynchronousDQNAgent(BaseAgent):
     def _update_epsilon_scheduler(self, episode_returns, step_done, epsilon_scheduler_index):
         np_done = np.array(step_done)
         for idx in range(self.n_processes):
+            # TODO notice the change below: cross threshold if the return is up to 30% worse of checkpoint
+            # if episode_returns[idx] > self.checkpoint_values[epsilon_scheduler_index[idx]] - \
+            #         np.abs(self.checkpoint_values[epsilon_scheduler_index[idx]] * 0.3):
             if episode_returns[idx] > self.checkpoint_values[epsilon_scheduler_index[idx]]:
                 epsilon_scheduler_index[idx] += 1
         epsilon_scheduler_index[np_done] = 0

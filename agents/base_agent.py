@@ -1,10 +1,11 @@
-from collections import namedtuple
-
 import torch.nn as nn
 import torch.optim as optim
 from utils.scheduler.decay_scheduler import DecayScheduler
 import numpy as np
 import torch
+
+from torch.optim.lr_scheduler import LambdaLR
+from collections import namedtuple
 from tensorboardX import SummaryWriter
 
 
@@ -13,10 +14,11 @@ from tensorboardX import SummaryWriter
 class BaseAgent:
 
     def __init__(self, model_class, model_params, rng, device='cpu', training_evaluation_frequency=100,
-                 optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, criterion=nn.SmoothL1Loss,
-                 gamma=0.99, epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True,
-                 target_synchronize_steps=1e4, td_losses=None, grad_clamp=None, auxiliary_losses=None,
-                 input_transforms=None, output_transforms=None, auxiliary_env_info=None, log=True, log_dir=None):
+                 optimizer=optim.RMSprop, optimizer_parameters={'lr': 1e-3, 'momentum': 0.9}, lr_scheduler_fn=None,
+                 criterion=nn.SmoothL1Loss, gamma=0.99, epsilon_scheduler=DecayScheduler(),
+                 epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4, td_losses=None, grad_clamp=None,
+                 grad_clamp_parameters=None, auxiliary_losses=None, input_transforms=None, output_transforms=None,
+                 auxiliary_env_info=None, log=True, log_dir=None):
 
         self.model_class = model_class
         self.rng = rng
@@ -31,6 +33,9 @@ class BaseAgent:
         self.target_synchronize_steps = target_synchronize_steps  # global steps across processes
         self.td_losses = [] if td_losses is None else td_losses
         self.grad_clamp = grad_clamp
+        if self.grad_clamp:
+            assert grad_clamp_parameters is not None and (grad_clamp_parameters == 'value' or 'norm')
+            self.grad_clamp_parameters = grad_clamp_parameters
         self.auxiliary_losses = [] if auxiliary_losses is None else auxiliary_losses
         self.input_transforms = [] if input_transforms is None else input_transforms
         self.output_transforms = [] if output_transforms is None else output_transforms
@@ -38,6 +43,7 @@ class BaseAgent:
         self.model_learner.to(self.device)
         self.model_target.to(self.device)
         self.optimizer = optimizer(self.model_learner.parameters(), **optimizer_parameters)
+        self.lr_scheduler = LambdaLR(self.optimizer, lr_scheduler_fn) if lr_scheduler_fn else None
         self.model_target.load_state_dict(self.model_learner.state_dict())
         self.elapsed_model_steps = 0
         self.elapsed_env_steps = 0
@@ -187,8 +193,13 @@ class BaseAgent:
             self.writer.add_scalar('data/cumulative_loss', loss, self.elapsed_env_steps)
         loss.backward()
         if self.grad_clamp:
-            for p in self.model_learner.parameters():
-                p.grad.data.clamp(*self.grad_clamp)
+            if self.grad_clamp == 'value':
+                for p in self.model_learner.parameters():
+                    p.grad.data.clamp(*self.grad_clamp_parameters)
+            elif self.grad_clamp == 'norm':
+                nn.utils.clip_grad_norm(self.model_learner.parameters(), *self.grad_clamp_parameters)
+        if self.lr_scheduler:
+            self.lr_scheduler.step()
         self.optimizer.step()
         self.elapsed_model_steps += 1
         if self.elapsed_model_steps % self.target_synchronize_steps == 0:

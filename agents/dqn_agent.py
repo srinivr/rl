@@ -88,15 +88,19 @@ class DQNAgent(BaseAgent):
             returns.append(episode_return)
             episode_lengths.append(episode_length)
             if self.checkpoint_epsilon and self.elapsed_episodes % self.checkpoint_frequency == 0:
-                if len(self.checkpoint_values) == 1 or np.mean(returns) > self.checkpoint_values[-2]:
-                    self.checkpoint_values.insert(-1, np.mean(returns))
+                # TODO logic below will mess with boosting
+                # Non-negative checkpoint
+                _temp_checkpoint = max(0., np.mean(returns[-20:]) if len(returns) >= 20 else np.float('-inf'))
+                if len(self.checkpoint_values) == 1 or _temp_checkpoint > self.checkpoint_values[-2]:
+                    self.checkpoint_values.insert(-1, _temp_checkpoint)
                     self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
                     if self.log:
                         self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
+                    if len(returns) >= 20:  # we have't used the returns if len < 20
+                        returns, episode_lengths = [], []
                 # print('mean training return at step:', self.elapsed_env_steps, ' returns:', self.elapsed_episodes
                 #       , ':', np.mean(returns))
                 # print('mean episode length:', np.mean(episode_lengths))
-                returns, episode_lengths = [], []
             if eval_env and self.elapsed_episodes % self.training_evaluation_frequency == 0:
                 print('ep:', self.elapsed_episodes, end=' ')
                 self._eval(eval_env, n_eval_episodes)

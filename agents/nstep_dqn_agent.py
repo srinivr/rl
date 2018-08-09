@@ -98,14 +98,23 @@ class NStepSynchronousDQNAgent(BaseAgent):
                     [], [], [], [], [], []
             step_states = step_next_states
             if self.checkpoint_epsilon and self.elapsed_env_steps % self.checkpoint_frequency == 0:
-                # TODO notice 1.2 below
+                # notice 1.2 below
                 # if len(self.checkpoint_values) == 1 or np.mean(cumulative_returns) > 1.2 * self.checkpoint_values[-2]:
-                if len(self.checkpoint_values) == 1 or np.mean(cumulative_returns) > self.checkpoint_values[-2]:
-                    self.checkpoint_values.insert(-1, np.mean(cumulative_returns))
+                # TODO logic below will mess with boosting
+                # We can't have negative checkpoint values
+                _temp_checkpoint = max(0., np.mean(cumulative_returns[-20:]) if len(cumulative_returns) >= 20 else \
+                    np.float('-inf'))
+                if len(self.checkpoint_values) == 1 or _temp_checkpoint > self.checkpoint_values[-2]:
+                    self.checkpoint_values.insert(-1, _temp_checkpoint)
                     self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
                     if self.log:
                         self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
-                cumulative_returns = []
+                    if len(cumulative_returns) >= 20:
+                        cumulative_returns = []
+                # elif _temp_checkpoint < self.checkpoint_values[-2]:
+                #     # boost all earlier values
+                #     for epsilon_scheduler in self.epsilon_schedulers:
+                #         epsilon_scheduler.boost(rate=4.)
             self._reset_episode_values(episode_returns, episode_lengths, step_done)
             # beyond this point all episode variable must have been reset
             if eval_env and self.elapsed_env_steps % self.training_evaluation_frequency == 0:

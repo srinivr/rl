@@ -16,7 +16,7 @@ class MultiProcessFrameStackWrapper(Wrapper):
     def step(self, action):
         batch_states, batch_rewards, batch_dones, batch_info = super().step(action)
         self.obs = np.roll(self.obs, -1, axis=1)
-        self.obs[:, -1, :, :] = batch_states[0]
+        self.obs[:, -1, :, :] = batch_states[:, -1, :, :]
         batch_states = np.copy(self.obs)
         for i in range(self.env.num_envs):
             if batch_dones[i]:
@@ -26,7 +26,7 @@ class MultiProcessFrameStackWrapper(Wrapper):
     def reset(self, **kwargs):
         batch_states = super().reset()
         self.obs *= 0.
-        self.obs[:, -1, :, :] = batch_states[0]
+        self.obs[:, -1, :, :] = batch_states[:, -1, :, :]
         return np.copy(self.obs)
 
 

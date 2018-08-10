@@ -1,3 +1,6 @@
+import os
+import shutil
+
 import torch.nn as nn
 import torch.optim as optim
 from utils.scheduler.decay_scheduler import DecayScheduler
@@ -18,7 +21,7 @@ class BaseAgent:
                  criterion=nn.SmoothL1Loss, gamma=0.99, epsilon_scheduler=DecayScheduler(),
                  epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4, td_losses=None, grad_clamp=None,
                  grad_clamp_parameters=None, auxiliary_losses=None, input_transforms=None, output_transforms=None,
-                 auxiliary_env_info=None, log=True, log_dir=None):
+                 auxiliary_env_info=None, log=True, log_dir=None, save_checkpoint=True):
 
         self.model_class = model_class
         self.rng = rng
@@ -52,9 +55,14 @@ class BaseAgent:
         if self.auxiliary_env_info:  # namedtuple containing names and types each holding a list
             self.auxiliary_tuple = namedtuple('auxiliary', self.auxiliary_env_info.names)
         self.log = log
-        if self.log:
+        self.save_checkpoint = save_checkpoint
+        if self.log or self.save_checkpoint:
             assert log_dir is not None
+        if self.log:
+            self.log_dir = log_dir
             self.writer = SummaryWriter(log_dir=log_dir)
+        self._best_return = None
+        self._is_best = None
 
     def learn(self, env, eval_env=None, n_learn_iterations=None, n_eval_episodes=100):
         raise NotImplementedError
@@ -155,6 +163,12 @@ class BaseAgent:
         if self.log:
             self.writer.add_scalar('data/eval_rewards', np.mean(returns), self.elapsed_env_steps)
             self.writer.add_scalar('data/eval_episode_length', length / n_episodes, self.elapsed_env_steps)
+        if self._best_return is None or np.mean(returns) > self._best_return:
+            self._best_return = np.mean(returns)
+            self._is_best = True
+        else:
+            self._is_best = False
+        self._save()
 
     def _episode_updates(self):
         self.elapsed_episodes += 1
@@ -268,3 +282,40 @@ class BaseAgent:
         if self.log:
             self.writer.add_scalar('data/epsilon', self.epsilon_scheduler.get_epsilon(), self.elapsed_env_steps)
             # self.writer.add_scalar('data/lr', self.optimizer.l)  # TODO
+
+    def _get_state(self):
+        return {
+            'elapsed_env_steps': self.elapsed_env_steps,
+            'elapsed_model_steps': self.elapsed_model_steps,
+            'state_dict': self.model_target.state_dict(),
+            'best_return': self._best_return,
+            'optimizer': self.optimizer.state_dict()
+        }
+
+    def _set_state(self, state):
+        self.elapsed_env_steps = state['elapsed_env_steps']
+        self.elapsed_model_steps = state['elapsed_model_steps']
+        self.model_learner.load_state_dict(state['state_dict'])
+        self.model_target.load_state_dict(self.model_learner.state_dict())
+        # self.model_learner.to(self.device)  # TODO is this necessary?
+        # self.model_target.to(self.device)
+        self._best_return = state['best_return']
+        self.optimizer.load_state_dict(state['optimizer'])
+        self.epsilon_scheduler.set_elapsed_steps(self.elapsed_env_steps)
+
+    def _save(self):
+        state = self._get_state()
+        filename = os.path.join(self.log_dir, 'checkpoint.ckpt')
+        torch.save(state, filename)
+        if self._is_best:
+            shutil.copyfile(filename, os.path.join(self.log_dir, 'best.ckpt'))
+
+    def load(self, path, load_best=False):
+        path = os.path.join(path, 'best.ckpt') if load_best else os.path.join(path, 'checkpoint.ckpt')
+        if os.path.isfile(path):
+            state = torch.load(path)
+            self._set_state(state)
+            print("=> loaded checkpoint '{}' (elapsed env steps {})".format(path, state['elapsed_env_steps']))
+        else:
+            print("=> no checkpoint found at '{}'".format(path))
+            raise ValueError

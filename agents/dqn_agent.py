@@ -19,7 +19,7 @@ class DQNAgent(BaseAgent):
                  td_losses=None, grad_clamp=None, grad_clamp_parameters=None, mb_size=32, replay_buffer_size=100000,
                  replay_buffer_min_experience=None, auxiliary_losses=None, input_transforms=[], output_transforms=[],
                  checkpoint_epsilon=False, checkpoint_epsilon_frequency=None, auxiliary_env_info=None, log=True,
-                 log_dir=None):
+                 log_dir=None, save_checkpoint=True):
 
         self.n_episodes = n_episodes
         self.mb_size = mb_size
@@ -36,7 +36,7 @@ class DQNAgent(BaseAgent):
                          optimizer, optimizer_parameters, lr_scheduler_fn, criterion, gamma, epsilon_scheduler,
                          epsilon_scheduler_use_steps, target_synchronize_steps, td_losses, grad_clamp,
                          grad_clamp_parameters, auxiliary_losses, input_transforms, output_transforms,
-                         auxiliary_env_info, log, log_dir)
+                         auxiliary_env_info, log, log_dir, save_checkpoint)
         if self.checkpoint_epsilon:
             assert checkpoint_epsilon_frequency is not None
             self.checkpoint_frequency = checkpoint_epsilon_frequency
@@ -140,3 +140,16 @@ class DQNAgent(BaseAgent):
         if self.log:
             self.writer.add_scalar('data/train_rewards', ret, self.elapsed_env_steps)
             self.writer.add_scalar('data/train_episode_length', length, self.elapsed_env_steps)
+
+    def _get_state(self):
+        state = super()._get_state()
+        if self.checkpoint_epsilon:
+            state['checkpoint_values'] = self.checkpoint_values
+            state['epsilon_schedulers'] = self.epsilon_schedulers
+        return state
+
+    def _set_state(self, state):
+        if self.checkpoint_epsilon:
+            self.checkpoint_values = state['checkpoint_values']
+            self.epsilon_schedulers = state['epsilon_schedulers']
+        super()._set_state(state)

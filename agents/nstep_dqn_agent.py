@@ -23,7 +23,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
                  target_synchronize_steps=1e4, td_losses=None, grad_clamp=None, grad_clamp_parameters=None, n_step=5,
                  n_processes=1, auxiliary_losses=None, input_transforms=None, output_transforms=None,
                  checkpoint_epsilon=False, checkpoint_epsilon_frequency=None, auxiliary_env_info=None, log=True,
-                 log_dir=None):
+                 log_dir=None, save_checkpoint=True):
 
         self.max_steps = max_steps
         self.n_step = n_step
@@ -35,7 +35,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
         super().__init__(model_class, model_params, rng, device, training_evaluation_frequency,
                          optimizer, optimizer_parameters, lr_scheduler_fn, criterion, gamma, epsilon_scheduler, True,
                          target_synchronize_steps, td_losses, grad_clamp, grad_clamp_parameters, auxiliary_losses,
-                         input_transforms, output_transforms, auxiliary_env_info, log, log_dir)
+                         input_transforms, output_transforms, auxiliary_env_info, log, log_dir, save_checkpoint)
 
         if self.checkpoint_epsilon:
             assert checkpoint_epsilon_frequency is not None
@@ -203,3 +203,16 @@ class NStepSynchronousDQNAgent(BaseAgent):
                     self.writer.add_scalar('data/epsilon_dynamic', self.epsilon_schedulers[epsilon_scheduler_index[idx]]
                                            .get_epsilon(), self.elapsed_env_steps + idx + 1)
             return actions
+
+    def _get_state(self):
+        state = super()._get_state()
+        if self.checkpoint_epsilon:
+            state['checkpoint_values'] = self.checkpoint_values
+            state['epsilon_schedulers'] = self.epsilon_schedulers
+        return state
+
+    def _set_state(self, state):
+        super()._set_state(state)
+        if self.checkpoint_epsilon:
+            self.checkpoint_values = state['checkpoint_values']
+            self.epsilon_schedulers = state['epsilon_schedulers']

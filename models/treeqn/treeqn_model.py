@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from collections import namedtuple
+
 from utils.initializer import nn_init, xav_init
 from models.base_model import BaseModel
 
@@ -49,9 +50,10 @@ class TreeQNModel(BaseModel):
                 # turn off bias for action dependent transition
                 nn.Tanh()
             ))
+
         self.reward_fn = nn.Sequential(
             nn_init(nn.Linear(self.state_embedding, 64), w_scale=np.sqrt(2)),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn_init(nn.Linear(64, self.n_actions), w_scale=0.01)
         )
         self.value_fn = nn.Sequential(

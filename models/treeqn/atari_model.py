@@ -1,6 +1,8 @@
 import torch.nn as nn
+import numpy as np
 
 from models.treeqn.treeqn_model import TreeQNModel
+from utils.initializer import nn_init
 
 
 class AtariTreeModel(TreeQNModel):
@@ -11,15 +13,15 @@ class AtariTreeModel(TreeQNModel):
                          model_grounding)
 
         self.encoding_convolution = nn.Sequential(
-            nn.Conv2d(in_channels=n_input_channels, out_channels=16, kernel_size=8, stride=4),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=4, stride=2),
-            nn.ReLU()
+            nn_init(nn.Conv2d(in_channels=n_input_channels, out_channels=16, kernel_size=8, stride=4), w_scale=np.sqrt(2)),
+            nn.ReLU(inplace=True),
+            nn_init(nn.Conv2d(in_channels=16, out_channels=32, kernel_size=4, stride=2), w_scale=np.sqrt(2)),
+            nn.ReLU(inplace=True)
         )
 
         self.encoding_fc = nn.Sequential(
-            nn.Linear(self.convolution_dim_out, self.state_embedding),
-            nn.ReLU()
+            nn_init(nn.Linear(self.convolution_dim_out, self.state_embedding), w_scale=np.sqrt(2)),
+            nn.ReLU(inplace=True)
         )
 
     def _get_encoding(self, x):

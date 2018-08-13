@@ -97,8 +97,8 @@ class BaseAgent:
             dim = state.ndim
         for _ in range(self.model_class.get_input_dimension() + 1 - dim):  # create a nd tensor if input < nd
             inputs = inputs.unsqueeze(0)
-
-        model_outputs = model(inputs)
+        with torch.no_grad():
+            model_outputs = model(inputs)
         return model_outputs
 
     def _apply_input_transform(self, states):
@@ -168,14 +168,15 @@ class BaseAgent:
             self._is_best = True
         else:
             self._is_best = False
-        self._save()
+        if self.save_checkpoint:
+            self._save()
 
     def _episode_updates(self):
         self.elapsed_episodes += 1
         if not self.epsilon_scheduler_use_steps:
             self.epsilon_scheduler.step()
 
-    def _step_updates(self, states, actions, rewards, targets, batch_done, auxiliary_info):
+    def _step_updates(self, states, actions, rewards, targets, batch_done, auxiliary_info, iteration):
         """
         Given a pytorch batch, update learner model, increment number of model updates
         (and possibly synchronize target model)
@@ -188,30 +189,32 @@ class BaseAgent:
             print('Batch has only 1 example. Can cause problems if batch norm was used.. Skipping step')
             return
         self.model_learner.train()
-        self.optimizer.zero_grad()
         model_outputs = self.model_learner(states)
         assert len(self.td_losses) + len(self.auxiliary_losses) != 0  # to train model at least one loss is required
         loss = torch.tensor(0., device=self.device)
         for idx in range(len(self.td_losses)):
             _loss = self.td_losses[idx].get_loss(model_outputs, actions, targets[idx])
-            loss = loss + _loss
+            loss += _loss
             if self.log:
                 self.writer.add_scalar('data/td_loss/' + self.td_losses[idx].get_name(), _loss, self.elapsed_env_steps)
         if self.auxiliary_losses:
             for l in self.auxiliary_losses:
                 _loss = l.get_loss(model_outputs, actions, rewards, batch_done, auxiliary_info)
-                loss = loss + _loss
+                loss += _loss
                 if self.log:
                     self.writer.add_scalar('data/auxiliary_loss/' + l.get_name(), _loss, self.elapsed_env_steps)
         if self.log:
             self.writer.add_scalar('data/cumulative_loss', loss, self.elapsed_env_steps)
+        self.optimizer.zero_grad()
         loss.backward()
         if self.grad_clamp:
             if self.grad_clamp == 'value':
                 for p in self.model_learner.parameters():
                     p.grad.data.clamp(*self.grad_clamp_parameters)
             elif self.grad_clamp == 'norm':
-                nn.utils.clip_grad_norm(self.model_learner.parameters(), *self.grad_clamp_parameters)
+                grad_norm = nn.utils.clip_grad_norm_(self.model_learner.parameters(), *self.grad_clamp_parameters)
+                if self.log:
+                    self.writer.add_scalar('data/grad_norm', grad_norm, self.elapsed_env_steps)
         if self.lr_scheduler:
             self.lr_scheduler.step()
         self.optimizer.step()
@@ -247,7 +250,8 @@ class BaseAgent:
                     break
         if is_none and not all(batch_done):
             _next_non_final_states = torch.tensor(batch_next_states, **float_args)[non_final_mask]
-            self.model_target.eval()
+            with torch.no_grad():
+                self.model_target.eval()
             model_outputs = self.model_target(_next_non_final_states)
         for idx in range(len(self.td_losses)):
             td_loss = self.td_losses[idx]

@@ -47,6 +47,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
             self.checkpoint_values = [
                 float('inf')]  # [-1] is always inf; threshold to use next scheduler
             self.epsilon_schedulers = [copy.deepcopy(self.checkpoint_epsilon_scheduler_template)]
+            self.n_avg_episodes = 50  # number of episodes to average over to compute checkpoint
 
     def learn(self, envs, eval_env=None, n_learn_iterations=None, n_eval_episodes=100, step_states=None,
               episode_returns=None, episode_lengths=None):
@@ -104,16 +105,18 @@ class NStepSynchronousDQNAgent(BaseAgent):
                     self.elapsed_env_steps % self.checkpoint_frequency == 0:
                 # notice 1.2 below
                 # if len(self.checkpoint_values) == 1 or np.mean(cumulative_returns) > 1.2 * self.checkpoint_values[-2]:
-                # TODO logic below will mess with boosting
                 # We can't have negative checkpoint values
-                _temp_checkpoint = max(0., np.mean(cumulative_returns[-20:]) if len(cumulative_returns) >= 20 else \
-                    np.float('-inf'))
+                # TODO logic below will mess with boosting
+                if len(cumulative_returns) >= self.n_avg_episodes:
+                    _temp_checkpoint = max(0., np.mean(cumulative_returns[-self.n_avg_episodes:]))
+                else:
+                    _temp_checkpoint = np.float('-inf')
                 if len(self.checkpoint_values) == 1 or _temp_checkpoint > self.checkpoint_values[-2]:
                     self.checkpoint_values.insert(-1, _temp_checkpoint)
                     self.epsilon_schedulers.append(copy.deepcopy(self.checkpoint_epsilon_scheduler_template))
                     if self.log:
                         self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
-                    if len(cumulative_returns) >= 20:
+                    if len(cumulative_returns) >= self.n_avg_episodes:  # clear out returns only if we used them
                         cumulative_returns = []
                 # elif _temp_checkpoint < self.checkpoint_values[-2]:
                 #     # boost all earlier values
@@ -184,7 +187,8 @@ class NStepSynchronousDQNAgent(BaseAgent):
             if np.sum(np_done) != 0:
                 self.writer.add_scalar('data/train_rewards', np.sum(episode_returns[np_done]) / np.sum(step_done),
                                        self.elapsed_env_steps)
-                self.writer.add_scalar('data/train_episode_length', np.sum(episode_lengths[np_done]) / np.sum(step_done),
+                self.writer.add_scalar('data/train_episode_length',
+                                       np.sum(episode_lengths[np_done]) / np.sum(step_done),
                                        self.elapsed_env_steps)
 
     def _get_epsilon_greedy_action(self, env, states, *args):

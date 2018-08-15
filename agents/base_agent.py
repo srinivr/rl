@@ -176,7 +176,7 @@ class BaseAgent:
         if not self.epsilon_scheduler_use_steps:
             self.epsilon_scheduler.step()
 
-    def _step_updates(self, states, actions, rewards, targets, batch_done, auxiliary_info, iteration):
+    def _step_updates(self, states, actions, rewards, targets, batch_done, auxiliary_info):
         """
         Given a pytorch batch, update learner model, increment number of model updates
         (and possibly synchronize target model)
@@ -309,13 +309,13 @@ class BaseAgent:
 
     def _save(self):
         state = self._get_state()
-        filename = os.path.join(self.log_dir, 'checkpoint.ckpt')
+        filename = os.path.join(self.log_dir, 'checkpoint_' + str(self.elapsed_env_steps) + '.ckpt')
         torch.save(state, filename)
         if self._is_best:
             shutil.copyfile(filename, os.path.join(self.log_dir, 'best.ckpt'))
 
-    def load(self, path, load_best=False):
-        path = os.path.join(path, 'best.ckpt') if load_best else os.path.join(path, 'checkpoint.ckpt')
+    def load(self, path, idx, load_best=False):
+        path = os.path.join(path, 'best.ckpt') if load_best else os.path.join(path, 'checkpoint_' + str(idx) + '.ckpt')
         if os.path.isfile(path):
             state = torch.load(path)
             self._set_state(state)

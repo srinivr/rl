@@ -75,11 +75,11 @@ def prep_env(env):
 
     return _f
 
-# cuda = True
-cuda = False
+cuda = True
+# cuda = False
 
-# checkpoint = True
-checkpoint = False
+checkpoint = True
+# checkpoint = False
 # experiment = 'PushDQN'
 # experiment = 'PushNStepSyncDQN'
 # experiment = 'CartPoleDQN'
@@ -374,7 +374,7 @@ elif experiment == 'PongDQN':
 
 
 elif experiment == 'atariNStep':
-    env_name = 'Amidar'
+    env_name = 'Venture'
     print('running', env_name)
 
     experiment = env_name + 'NStep'
@@ -382,7 +382,7 @@ elif experiment == 'atariNStep':
     nproc = 16
     nstep = 5
     if checkpoint:
-        decay_steps = int(3e5)  # TODO always look here...
+        decay_steps = int(5e5)  # TODO always look here...
     else:
         decay_steps = int(4e6)
     log_dir = os.path.join('runs', experiment, prefix, str(decay_steps),
@@ -401,7 +401,7 @@ elif experiment == 'atariNStep':
     # envs = SubprocVecEnv(envs)
     # envs = MultiProcessFrameStackWrapper(envs, nproc, n_stack=4)
     env = make_atari(env_name, skip=10)
-    env = wrap_deepmind2(env, frame_stack=True)
+    env = wrap_deepmind2(env, episode_life=False, clip_rewards=False, frame_stack=True)
     envs = [make_atari_env(env_name) for _ in range(nproc)]
     envs = SubprocVecEnv(envs)
 
@@ -413,12 +413,13 @@ elif experiment == 'atariNStep':
     agent = NStepSynchronousDQNAgent(AtariTreeModel, [4, env.action_space.n], None, n_processes=nproc, device=device, n_step=nstep,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
                                      lr_scheduler_fn=lr_fn, input_transforms=[atari_image_transform],
-                                     grad_clamp='norm', grad_clamp_parameters=[1], training_evaluation_frequency=40000, criterion=nn.MSELoss,
-                                     epsilon_scheduler=LinearScheduler(decay_steps=decay_steps),
+                                     grad_clamp='norm', grad_clamp_parameters=[5], training_evaluation_frequency=40000,
+                                     criterion=nn.MSELoss, epsilon_scheduler=LinearScheduler(decay_steps=decay_steps),
+                                     checkpoint_warmup_steps=0, checkpoint_epsilon_scheduler_template=LinearScheduler(decay_steps=decay_steps),
                                      td_losses=[QLoss(criterion=nn.MSELoss)], auxiliary_losses=[TreeNStepRewardLoss(2, 5, nproc)],
                                      checkpoint_epsilon=checkpoint, checkpoint_epsilon_frequency=checkpoint_freq,
                                      log=True, log_dir=log_dir)
-    agent.learn(envs, env,n_eval_episodes=5)
+    agent.learn(envs, env, n_eval_episodes=5)
 
 elif experiment == 'debug':
     env_name = 'AmidarNoFrameskip-v4'
@@ -482,7 +483,7 @@ elif experiment == 'debug':
         #     print(p.size(),':', torch.sum(p))
         #     _sum += torch.sum(p)
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        agent._step_updates(*batch, None, iteration=i)
+        agent._step_updates(*batch, auxiliary_info=None, iteration=i)
         if (i) % 100 == 0:
           agent._eval(env, n_episodes=5)
     agent._eval(env, n_episodes=5)

@@ -140,7 +140,7 @@ class BaseAgent:
         o_ = self._apply_input_transform(o_)
         return (action, o_, reward, done, info, *auxiliary_info)
 
-    def _eval(self, env, n_episodes=100, action_type='scalar'):
+    def _eval(self, env, n_episodes=100, action_type='scalar', epsilon=0.05):
         """
         :param action_type: 'scalar' or 'list' whichever is appropriate for the environment
         """
@@ -153,8 +153,11 @@ class BaseAgent:
             ret = 0.
             while not done:
                 length += 1
-                o = self._apply_input_transform(o)
-                action = self._get_greedy_action(self.model_target, o, action_type)
+                if np.random.random() < epsilon:
+                    action = env.action_space.sample()
+                else:
+                    o = self._apply_input_transform(o)
+                    action = self._get_greedy_action(self.model_target, o, action_type)
                 o, rew, done, info, *auxiliary_info = env.step(action)
                 ret += rew
             returns.append(ret)

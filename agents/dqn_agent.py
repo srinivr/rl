@@ -103,7 +103,7 @@ class DQNAgent(BaseAgent):
                 # print('mean episode length:', np.mean(episode_lengths))
             if eval_env and self.elapsed_episodes % self.training_evaluation_frequency == 0:
                 print('ep:', self.elapsed_episodes, end=' ')
-                self._eval(eval_env, n_eval_episodes)
+                self._eval(eval_env, n_episodes=n_eval_episodes, epsilon=0.05)
 
     def __get_batch(self):
         samples = self.replay_buffer.sample(self.mb_size)

@@ -1,6 +1,9 @@
 from models.base_model import BaseModel
 from collections import namedtuple
 import torch.nn as nn
+import numpy as np
+
+from utils.initializer import nn_init
 
 
 class SimpleCartPoleModel(BaseModel):
@@ -10,13 +13,15 @@ class SimpleCartPoleModel(BaseModel):
         self.output_dim = output_dim
         self.embedding = 24
         self.fc_layers = nn.Sequential(
-            nn.Linear(self.input_dim, self.embedding),
-            nn.BatchNorm1d(self.embedding),
-            nn.ReLU(),
-            nn.Linear(self.embedding, self.embedding),
-            nn.BatchNorm1d(self.embedding),
-            nn.ReLU(),
-            nn.Linear(self.embedding, self.output_dim)
+            nn_init(nn.Linear(self.input_dim, self.embedding), w_scale=np.sqrt(2)),
+            # nn.BatchNorm1d(self.embedding),
+            # nn.ReLU(),
+            nn.Tanh(),
+            nn_init(nn.Linear(self.embedding, self.embedding), w_scale=np.sqrt(2)),
+            # nn.BatchNorm1d(self.embedding),
+            # nn.ReLU(),
+            nn.Tanh(),
+            nn_init(nn.Linear(self.embedding, self.output_dim))
         )
 
     def forward(self, x):

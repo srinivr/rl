@@ -51,7 +51,7 @@ def make_env(env_id, seed, image_wrap=True, wrap=False, skip=10):
             # env = wrap_deepmind(env, episode_life=True, clip_rewards=True, skip=skip)
             env = wrap_deepmind2(env, episode_life=True, clip_rewards=True, frame_stack=10)
         # print('max_steps:', env._max_episode_steps)
-        env.seed(seed)
+        # env.seed(seed)
         if image_wrap:
             env = PyTorchImageWrapper(env)
         return env
@@ -107,7 +107,6 @@ def set_global_seeds(i):
     np.random.seed(i)
     random.seed(i)
 
-set_global_seeds(1)
 
 if cuda:
     device = 'cuda'
@@ -128,9 +127,10 @@ if experiment == 'CartPoleDQN':
     env = gym.make('CartPole-v0')
     optimizer_parameters = {'lr': 1e-3, 'alpha': 0.99, 'eps': 1e-5}
     agent = DQNAgent(SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=50000, device=device,
-                     epsilon_scheduler_use_steps=True, epsilon_scheduler=LinearScheduler(decay_steps=int(1e4), final_epsilon=0.02),
-                     target_synchronize_steps=500, grad_clamp=[-1, 1],
-                     training_evaluation_frequency=100, td_losses=[QLoss()], log=False)
+                     epsilon_scheduler_use_steps=True, epsilon_scheduler=LinearScheduler(decay_steps=int(1e4),
+                                                                                         final_epsilon=0.02),
+                     target_synchronize_steps=500, grad_clamp='norm', grad_clamp_parameters=[10],
+                     training_evaluation_frequency=100, td_losses=[QLoss()], log=False, save_checkpoint=False)
 
     # agent = DQNAgent(SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=50000, device=device,
     #                  epsilon_scheduler_use_steps=True, epsilon_scheduler=LinearScheduler(decay_steps=int(1e4), lower_bound=0.02),
@@ -142,8 +142,10 @@ if experiment == 'CartPoleDQN':
 
 elif experiment == 'CartPoleNStepSynchronousDQN':
     env_name = 'CartPole-v0'
-    log_dir = os.path.join('temp_runs', experiment, prefix, str(int(5e4)),
+    decay_steps = int(50e3)
+    log_dir = os.path.join('runs', experiment, prefix, str(decay_steps),
                            '_' + current_time + '_' + socket.gethostname())
+
     env = gym.make(env_name)
     nproc = 8
     envs = [make_env(env_name, seed, image_wrap=False) for seed in range(nproc)]
@@ -152,11 +154,12 @@ elif experiment == 'CartPoleNStepSynchronousDQN':
     auxiliary_env_info = namedtuple('auxiliary_env_info', 'names, types')
     agent = NStepSynchronousDQNAgent(SimpleCartPoleModel, [4, 2], None, n_processes=nproc, device=device,
                                      target_synchronize_steps=10000, grad_clamp='value', grad_clamp_parameters=[-1, 1],
-                                     td_losses=[QLoss()],
+                                     td_losses=[QLoss()], epsilon_scheduler=LinearScheduler(decay_steps=decay_steps,
+                                                                                            final_epsilon=0.05),
                                      training_evaluation_frequency=10000, log=True, log_dir=log_dir, save_checkpoint=True)
-    path = os.path.join('temp_runs', experiment, prefix, str(int(5e4)), '_Aug09_23-43-11_agent22-ml')
-    agent.load(path)
-    agent.learn(envs, env, n_learn_iterations=10000)
+    # path = os.path.join('temp_runs', experiment, prefix, str(int(5e4)), '_Aug09_23-43-11_agent22-ml')
+    # agent.load(path)
+    agent.learn(envs, env)
 
 elif experiment == 'PushNStepSyncDQN':
 
@@ -374,7 +377,7 @@ elif experiment == 'PongDQN':
 
 
 elif experiment == 'atariNStep':
-    env_name = 'Venture'
+    env_name = 'MsPacman'
     print('running', env_name)
 
     experiment = env_name + 'NStep'
@@ -382,7 +385,7 @@ elif experiment == 'atariNStep':
     nproc = 16
     nstep = 5
     if checkpoint:
-        decay_steps = int(5e5)  # TODO always look here...
+        decay_steps = int(2e5)  # TODO always look here...
     else:
         decay_steps = int(4e6)
     log_dir = os.path.join('runs', experiment, prefix, str(decay_steps),
@@ -391,7 +394,7 @@ elif experiment == 'atariNStep':
         decay_steps = decay_steps // (nproc * nstep)
         checkpoint_freq = None
     else:
-        checkpoint_freq = int(25e4)  # TODO this is not a mistake
+        checkpoint_freq = int(25e4)  # this is not a mistake
 
     env_name = env_name+'NoFrameskip-v4'
     # env = [make_env(env_name, 100, wrap=True, skip=10) for seed in range(1)]

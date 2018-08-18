@@ -127,7 +127,7 @@ class NStepSynchronousDQNAgent(BaseAgent):
             if eval_env and self.elapsed_env_steps % self.training_evaluation_frequency == 0:
                 print('train reward:', np.mean(cumulative_returns))
                 print('step:', self.elapsed_env_steps, end=' ')
-                self._eval(eval_env, n_eval_episodes)
+                self._eval(eval_env, n_episodes=n_eval_episodes, epsilon=0.05)
 
         return step_states, episode_returns, episode_lengths
 

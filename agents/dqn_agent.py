@@ -18,8 +18,9 @@ class DQNAgent(BaseAgent):
                  epsilon_scheduler=DecayScheduler(), epsilon_scheduler_use_steps=True, target_synchronize_steps=1e4,
                  td_losses=None, grad_clamp=None, grad_clamp_parameters=None, mb_size=32, replay_buffer_size=100000,
                  replay_buffer_min_experience=None, auxiliary_losses=None, input_transforms=[], output_transforms=[],
-                 checkpoint_epsilon=False, checkpoint_epsilon_frequency=None, auxiliary_env_info=None, log=True,
-                 log_dir=None, save_checkpoint=True):
+                 checkpoint_epsilon=False, checkpoint_epsilon_frequency=None, checkpoint_warmup_steps=None,
+                 checkpoint_epsilon_scheduler_template=None, auxiliary_env_info=None, log=True, log_dir=None,
+                 save_checkpoint=True):
 
         self.n_episodes = n_episodes
         self.mb_size = mb_size
@@ -39,10 +40,14 @@ class DQNAgent(BaseAgent):
                          auxiliary_env_info, log, log_dir, save_checkpoint)
         if self.checkpoint_epsilon:
             assert checkpoint_epsilon_frequency is not None
+            assert checkpoint_epsilon_scheduler_template is not None
+            self.checkpoint_warmup_steps = 0 if checkpoint_warmup_steps is None else checkpoint_warmup_steps
+            self.checkpoint_epsilon_scheduler_template = checkpoint_epsilon_scheduler_template
             self.checkpoint_frequency = checkpoint_epsilon_frequency
             self.checkpoint_values = [float('inf')]  # [-1] is always infinity; threshold to use next scheduler
-            self.original_epsilon_scheduler = copy.deepcopy(self.epsilon_scheduler)
-            self.epsilon_schedulers = [copy.deepcopy(self.original_epsilon_scheduler)]
+            self.epsilon_schedulers = [copy.deepcopy(self.checkpoint_epsilon_scheduler_template)]
+            self.n_avg_episodes = 50  # number of episodes to average over to compute checkpoint
+
         if self.auxiliary_env_info:
             self.transitions = namedtuple('Transition', 'state action reward next_state done auxiliary')
         else:
@@ -59,8 +64,6 @@ class DQNAgent(BaseAgent):
         while ephemeral_episode_count < n_learn_iterations:
             ephemeral_episode_count += 1
             o = env.reset()
-            # for input_transform in self.input_transforms:
-            #     o = input_transform.transform(o)
             o = self._apply_input_transform(o)
             done = False
             episode_return, episode_length = 0., 0.
@@ -90,17 +93,15 @@ class DQNAgent(BaseAgent):
             if self.checkpoint_epsilon and self.elapsed_episodes % self.checkpoint_frequency == 0:
                 # TODO logic below will mess with boosting
                 # Non-negative checkpoint
-                _temp_checkpoint = max(0., np.mean(returns[-20:]) if len(returns) >= 20 else np.float('-inf'))
+                _temp_checkpoint = max(0., np.mean(returns[-self.n_avg_episodes:]) if len(returns) >=
+                                                                                      self.n_avg_episodes else np.float('-inf'))
                 if len(self.checkpoint_values) == 1 or _temp_checkpoint > self.checkpoint_values[-2]:
                     self.checkpoint_values.insert(-1, _temp_checkpoint)
-                    self.epsilon_schedulers.append(copy.deepcopy(self.original_epsilon_scheduler))
+                    self.epsilon_schedulers.append(copy.deepcopy(self.checkpoint_epsilon_scheduler_template))
                     if self.log:
                         self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
-                    if len(returns) >= 20:  # we have't used the returns if len < 20
+                    if len(returns) >= self.n_avg_episodes:
                         returns, episode_lengths = [], []
-                # print('mean training return at step:', self.elapsed_env_steps, ' returns:', self.elapsed_episodes
-                #       , ':', np.mean(returns))
-                # print('mean episode length:', np.mean(episode_lengths))
             if eval_env and self.elapsed_episodes % self.training_evaluation_frequency == 0:
                 print('ep:', self.elapsed_episodes, end=' ')
                 self._eval(eval_env, n_episodes=n_eval_episodes, epsilon=0.05)

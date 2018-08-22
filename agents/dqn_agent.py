@@ -47,6 +47,8 @@ class DQNAgent(BaseAgent):
             self.checkpoint_values = [float('inf')]  # [-1] is always infinity; threshold to use next scheduler
             self.epsilon_schedulers = [copy.deepcopy(self.checkpoint_epsilon_scheduler_template)]
             self.n_avg_episodes = 50  # number of episodes to average over to compute checkpoint
+            self.reset_value = self.current_reset_value = checkpoint_epsilon_scheduler_template.get_final_epsilon()
+            self.epsilon_reset_decay = 0.9
 
         if self.auxiliary_env_info:
             self.transitions = namedtuple('Transition', 'state action reward next_state done auxiliary')
@@ -91,7 +93,6 @@ class DQNAgent(BaseAgent):
             returns.append(episode_return)
             episode_lengths.append(episode_length)
             if self.checkpoint_epsilon and self.elapsed_episodes % self.checkpoint_frequency == 0:
-                # TODO logic below will mess with boosting
                 # Non-negative checkpoint
                 _temp_checkpoint = max(0., np.mean(returns[-self.n_avg_episodes:]) if len(returns) >=
                                                                                       self.n_avg_episodes else np.float('-inf'))
@@ -102,6 +103,13 @@ class DQNAgent(BaseAgent):
                         self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
                     if len(returns) >= self.n_avg_episodes:
                         returns, episode_lengths = [], []
+                elif _temp_checkpoint < self.checkpoint_values[-2] and len(returns) >= self.n_avg_episodes:
+                    # boost all earlier values
+                    decay = 1.
+                    for epsilon_scheduler in self.epsilon_schedulers:
+                        epsilon_scheduler.reset(epsilon_scheduler.get_epsilon() + max(0.01, self.current_reset_value * decay))
+                        decay *= self.epsilon_reset_decay
+                    self.current_reset_value = min(1., self.current_reset_value + self.reset_value)
             if eval_env and self.elapsed_episodes % self.training_evaluation_frequency == 0:
                 print('ep:', self.elapsed_episodes, end=' ')
                 self._eval(eval_env, n_episodes=n_eval_episodes, epsilon=0.05)

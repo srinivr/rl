@@ -48,6 +48,8 @@ class NStepSynchronousDQNAgent(BaseAgent):
                 float('inf')]  # [-1] is always inf; threshold to use next scheduler
             self.epsilon_schedulers = [copy.deepcopy(self.checkpoint_epsilon_scheduler_template)]
             self.n_avg_episodes = 50  # number of episodes to average over to compute checkpoint
+            self.reset_value = self.current_reset_value = checkpoint_epsilon_scheduler_template.get_final_epsilon()
+            self.epsilon_reset_decay = 0.9
 
     def learn(self, envs, eval_env=None, n_learn_iterations=None, n_eval_episodes=100, step_states=None,
               episode_returns=None, episode_lengths=None):
@@ -106,7 +108,6 @@ class NStepSynchronousDQNAgent(BaseAgent):
                 # notice 1.2 below
                 # if len(self.checkpoint_values) == 1 or np.mean(cumulative_returns) > 1.2 * self.checkpoint_values[-2]:
                 # We can't have negative checkpoint values
-                # TODO logic below will mess with boosting
                 if len(cumulative_returns) >= self.n_avg_episodes:
                     _temp_checkpoint = max(0., np.mean(cumulative_returns[-self.n_avg_episodes:]))
                 else:
@@ -117,11 +118,15 @@ class NStepSynchronousDQNAgent(BaseAgent):
                     if self.log:
                         self.writer.add_scalar('data/checkpoint', self.checkpoint_values[-2], self.elapsed_env_steps)
                     if len(cumulative_returns) >= self.n_avg_episodes:  # clear out returns only if we used them
-                        cumulative_returns = []
-                # elif _temp_checkpoint < self.checkpoint_values[-2]:
-                #     # boost all earlier values
-                #     for epsilon_scheduler in self.epsilon_schedulers:
-                #         epsilon_scheduler.boost(rate=4.)
+                        cumulative_returns = []  # TODO verify if clearing is necessary
+                        self.current_reset_value = self.reset_value
+                elif _temp_checkpoint < self.checkpoint_values[-2] and len(cumulative_returns) >= self.n_avg_episodes:
+                    # boost all earlier values
+                    decay = 1.
+                    for epsilon_scheduler in self.epsilon_schedulers:
+                        epsilon_scheduler.reset(epsilon_scheduler.get_epsilon() + max(0.01, self.current_reset_value * decay))
+                        decay *= self.epsilon_reset_decay
+                    self.current_reset_value = min(1., self.current_reset_value + self.reset_value)
             self._reset_episode_values(episode_returns, episode_lengths, step_done)
             # beyond this point all episode variable must have been reset
             if eval_env and self.elapsed_env_steps % self.training_evaluation_frequency == 0:

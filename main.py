@@ -12,6 +12,7 @@ import torch.nn as nn
 from torch import optim
 
 import envs.treeqn.push
+from agents.checkpoint.nstep_dqn_checkpoint_agent import NStepDQNCheckpointAgent
 from agents.iterative_agents.iterative_agent import IterativeAgent
 from agents.nstep_dqn_agent import NStepSynchronousDQNAgent
 from agents.tabular.q_learner import QLearner
@@ -77,7 +78,6 @@ def prep_env(env):
 
 cuda = True
 # cuda = False
-
 checkpoint = True
 # checkpoint = False
 # experiment = 'PushDQN'
@@ -125,12 +125,19 @@ current_time = datetime.now().strftime('%b%d_%H-%M-%S')
 
 if experiment == 'CartPoleDQN':
     env = gym.make('CartPole-v0')
+    decay_steps = int(1e4)
+    log_dir = os.path.join('runs', experiment, prefix, str(decay_steps),
+                           '_' + current_time + '_' + socket.gethostname())
     optimizer_parameters = {'lr': 1e-3, 'alpha': 0.99, 'eps': 1e-5}
     agent = DQNAgent(SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=50000, device=device,
-                     epsilon_scheduler_use_steps=True, epsilon_scheduler=LinearScheduler(decay_steps=int(1e4),
+                     epsilon_scheduler_use_steps=True, epsilon_scheduler=LinearScheduler(decay_steps=decay_steps,
                                                                                          final_epsilon=0.02),
                      target_synchronize_steps=500, grad_clamp='norm', grad_clamp_parameters=[10],
-                     training_evaluation_frequency=100, td_losses=[QLoss()], log=False, save_checkpoint=False)
+                     training_evaluation_frequency=100, td_losses=[QLoss()], log=True, log_dir=log_dir,
+                     checkpoint_epsilon=checkpoint, checkpoint_epsilon_scheduler_template=LinearScheduler(decay_steps=int(15e1),
+                                                                                                    final_epsilon=0.02),
+                     checkpoint_epsilon_frequency=5,
+                     save_checkpoint=False)
 
     # agent = DQNAgent(SimpleCartPoleModel, [4, 2], None, n_episodes=50000, replay_buffer_size=50000, device=device,
     #                  epsilon_scheduler_use_steps=True, epsilon_scheduler=LinearScheduler(decay_steps=int(1e4), lower_bound=0.02),
@@ -153,7 +160,7 @@ elif experiment == 'CartPoleNStepSynchronousDQN':
     envs = SubprocVecEnv(envs)  # target_sync = 10e4 * n_proc
     auxiliary_env_info = namedtuple('auxiliary_env_info', 'names, types')
     agent = NStepSynchronousDQNAgent(SimpleCartPoleModel, [4, 2], None, n_processes=nproc, device=device,
-                                     target_synchronize_steps=10000, grad_clamp='value', grad_clamp_parameters=[-1, 1],
+                                     target_synchronize_steps=10000, grad_clamp='2', grad_clamp_parameters=[-1, 1],
                                      td_losses=[QLoss()], epsilon_scheduler=LinearScheduler(decay_steps=decay_steps,
                                                                                             final_epsilon=0.05),
                                      training_evaluation_frequency=10000, log=True, log_dir=log_dir, save_checkpoint=True)
@@ -377,7 +384,7 @@ elif experiment == 'PongDQN':
 
 
 elif experiment == 'atariNStep':
-    env_name = 'MsPacman'
+    env_name = 'Qbert'
     print('running', env_name)
 
     experiment = env_name + 'NStep'
@@ -385,7 +392,7 @@ elif experiment == 'atariNStep':
     nproc = 16
     nstep = 5
     if checkpoint:
-        decay_steps = int(2e5)  # TODO always look here...
+        decay_steps = int(5e4)  # TODO always look here...
     else:
         decay_steps = int(4e6)
     log_dir = os.path.join('runs', experiment, prefix, str(decay_steps),
@@ -394,7 +401,7 @@ elif experiment == 'atariNStep':
         decay_steps = decay_steps // (nproc * nstep)
         checkpoint_freq = None
     else:
-        checkpoint_freq = int(25e4)  # this is not a mistake
+        checkpoint_freq = int(25e4)
 
     env_name = env_name+'NoFrameskip-v4'
     # env = [make_env(env_name, 100, wrap=True, skip=10) for seed in range(1)]
@@ -413,15 +420,14 @@ elif experiment == 'atariNStep':
     def constant_fn(*args):
         return 1.0
     lr_fn = constant_fn
-    agent = NStepSynchronousDQNAgent(AtariTreeModel, [4, env.action_space.n], None, n_processes=nproc, device=device, n_step=nstep,
+    agent = NStepDQNCheckpointAgent(AtariTreeModel, [4, env.action_space.n], None, n_processes=nproc, device=device, n_step=nstep,
                                      optimizer_parameters=optimizer_parameters, target_synchronize_steps=40000,
                                      lr_scheduler_fn=lr_fn, input_transforms=[atari_image_transform],
                                      grad_clamp='norm', grad_clamp_parameters=[5], training_evaluation_frequency=40000,
                                      criterion=nn.MSELoss, epsilon_scheduler=LinearScheduler(decay_steps=decay_steps),
                                      checkpoint_warmup_steps=0, checkpoint_epsilon_scheduler_template=LinearScheduler(decay_steps=decay_steps),
                                      td_losses=[QLoss(criterion=nn.MSELoss)], auxiliary_losses=[TreeNStepRewardLoss(2, 5, nproc)],
-                                     checkpoint_epsilon=checkpoint, checkpoint_epsilon_frequency=checkpoint_freq,
-                                     log=True, log_dir=log_dir)
+                                     checkpoint_epsilon_frequency=checkpoint_freq, log=True, log_dir=log_dir)
     agent.learn(envs, env, n_eval_episodes=5)
 
 elif experiment == 'debug':

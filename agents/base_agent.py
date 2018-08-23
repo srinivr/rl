@@ -125,7 +125,7 @@ class BaseAgent:
         actions = model_output.q_values.max(1)[1].detach().to('cpu').numpy()
         return actions if action_type == 'list' else actions[0]
 
-    def _get_epsilon_greedy_action(self, env, states, *args):
+    def _get_epsilon_greedy_action(self, env, states):
         if np.random.random() < self._get_epsilon():
             action = self._get_sample_action(env)
         else:
@@ -133,8 +133,8 @@ class BaseAgent:
             action = self._get_greedy_action(self.model_learner, states)
         return action
 
-    def _get_epsilon_greedy_action_and_step(self, env, states, *args):  # states must be input-transformed
-        action = self._get_epsilon_greedy_action(env, states, args)
+    def _get_epsilon_greedy_action_and_step(self, env, states):  # states must be input-transformed
+        action = self._get_epsilon_greedy_action(env, states)
         o_, reward, done, info, *auxiliary_info = env.step(action)
         self.elapsed_env_steps += self._get_n_steps()
         o_ = self._apply_input_transform(o_)
@@ -326,3 +326,9 @@ class BaseAgent:
         else:
             print("=> no checkpoint found at '{}'".format(path))
             raise ValueError
+
+    def _do_after_env_step(self, retrn, length, reward, done):
+        pass
+
+    def _do_after_iteration(self, *args):
+        pass
